@@ -1,18 +1,22 @@
-﻿import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { searchParams } = new URL(req.url);
-  const creator_id = searchParams.get("creator_id");
-  const campaign_id = searchParams.get("campaign_id");
+  try {
+    const supabase = createServerClient();
+    const { searchParams } = new URL(req.url);
+    const creator_id = searchParams.get("creator_id");
+    const campaign_id = searchParams.get("campaign_id");
 
-  let query = supabase.from("posts").select("*, revenue_estimates(*)").order("posted_at", { ascending: false }).limit(50);
-  if (creator_id) query = query.eq("creator_id", creator_id);
-  if (campaign_id) query = query.eq("campaign_id", campaign_id);
+    let query = supabase.from("posts").select("*, revenue_estimates(*)").order("posted_at", { ascending: false }).limit(50);
+    if (creator_id) query = query.eq("creator_id", creator_id);
+    if (campaign_id) query = query.eq("campaign_id", campaign_id);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+    const { data, error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data });
+  } catch (error: any) {
+    console.error("Posts API error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
