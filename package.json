@@ -1,5 +1,5 @@
 {
-  "name": "cpip",
+  "name": "creatorpulse",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,7 @@
     "scrape": "npx tsx scraper/run.ts"
   },
   "dependencies": {
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "^2.45.0",
     "next": "14.2.15",
     "react": "^18.3.1",

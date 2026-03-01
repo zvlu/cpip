@@ -1,13 +1,7 @@
-﻿import { createClient } from "@supabase/supabase-js";
+// Legacy re-export — new code should import from @/lib/supabase/client or @/lib/supabase/server
+import { createClient } from "@/lib/supabase/client";
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Browser-side singleton for backward compatibility
+export const supabase = createClient();
 
-export function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+export { createClient };
