@@ -1,5 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ToastContainer } from "@/components/ui/ToastContainer";
+import { useToast } from "@/lib/hooks/useToast";
+import { loadAppSettings } from "@/lib/settings";
+import { apiFetch } from "@/lib/api/client";
 
 const ALERT_ICONS: Record<string, string> = {
   score_drop: "📉",
@@ -20,12 +25,20 @@ const SEVERITY_COLORS: Record<string, string> = {
 type FilterType = "all" | "unread" | "critical";
 
 export function AlertsList() {
+  const router = useRouter();
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [markAsReadOnOpen, setMarkAsReadOnOpen] = useState(true);
+  const [markingAllAsRead, setMarkingAllAsRead] = useState(false);
+  const { toasts, removeToast, error: toastError, success } = useToast();
 
   useEffect(() => {
+    const settings = loadAppSettings();
+    setFilter(settings.alerts.defaultFilter);
+    setMarkAsReadOnOpen(settings.alerts.markAsReadOnOpen);
     fetchAlerts();
   }, []);
 
@@ -33,8 +46,13 @@ export function AlertsList() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/api/alerts");
+      setAuthRequired(false);
+      const res = await apiFetch("/api/alerts?include_read=true");
       if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setAuthRequired(true);
+          return;
+        }
         throw new Error(`Failed to fetch alerts: ${res.statusText}`);
       }
       const json = await res.json();
@@ -50,7 +68,7 @@ export function AlertsList() {
 
   const handleMarkAsRead = async (alertId: string) => {
     try {
-      const res = await fetch("/api/alerts", {
+      const res = await apiFetch("/api/alerts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: alertId, read: true }),
@@ -63,18 +81,7 @@ export function AlertsList() {
       setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, read: true } : a)));
     } catch (err: any) {
       console.error("Failed to mark alert as read:", err);
-      alert(`Error: ${err.message}`);
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      const unreadAlerts = filteredAlerts.filter((a) => !a.read);
-      if (unreadAlerts.length === 0) return;
-
-      await Promise.all(unreadAlerts.map((a) => handleMarkAsRead(a.id)));
-    } catch (err: any) {
-      console.error("Failed to mark all as read:", err);
+      toastError(`Failed to update alert: ${err.message}`);
     }
   };
 
@@ -85,6 +92,49 @@ export function AlertsList() {
   });
 
   const unreadCount = alerts.filter((a) => !a.read).length;
+
+  const handleMarkAllAsRead = async () => {
+    const unreadAlerts = filteredAlerts.filter((a) => !a.read);
+    if (unreadAlerts.length === 0) return;
+
+    setMarkingAllAsRead(true);
+    try {
+      const results = await Promise.allSettled(
+        unreadAlerts.map((a) =>
+          apiFetch("/api/alerts", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: a.id, read: true }),
+          }).then((res) => {
+            if (!res.ok) throw new Error(res.statusText || "Request failed");
+            return a.id;
+          })
+        )
+      );
+
+      const succeededIds = results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+        .map((r) => r.value);
+      const failedCount = results.length - succeededIds.length;
+
+      if (succeededIds.length > 0) {
+        setAlerts((prev) => prev.map((a) => (succeededIds.includes(a.id) ? { ...a, read: true } : a)));
+      }
+
+      if (failedCount === 0) {
+        success("All visible alerts marked as read.");
+      } else if (succeededIds.length > 0) {
+        toastError(`${failedCount} alert${failedCount === 1 ? "" : "s"} could not be updated.`);
+      } else {
+        toastError("Failed to mark visible alerts as read.");
+      }
+    } catch (err: any) {
+      console.error("Failed to mark all as read:", err);
+      toastError(`Failed to mark alerts as read: ${err?.message || "Unknown error"}`);
+    } finally {
+      setMarkingAllAsRead(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -98,7 +148,7 @@ export function AlertsList() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-4xl font-bold text-gray-900">Alerts</h1>
+          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
           <p className="text-gray-600 mt-2">Manage and track notifications</p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -115,12 +165,41 @@ export function AlertsList() {
     );
   }
 
+  if (authRequired) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
+          <p className="text-gray-600 mt-2">Manage and track notifications</p>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <p className="text-gray-900 font-medium">Sign in to view alerts</p>
+          <p className="text-gray-600 text-sm mt-1">Your alerts are account-scoped and available after authentication.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => router.push("/auth")}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              Sign in
+            </button>
+            <button
+              onClick={fetchAlerts}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-white transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-gray-900">Alerts</h1>
+          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
           <p className="text-gray-600 mt-2">
             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}` : "All caught up"}
           </p>
@@ -128,15 +207,16 @@ export function AlertsList() {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
-            className="px-4 py-2 text-blue-600 hover:text-blue-700 font-medium text-sm transition-colors"
+            disabled={markingAllAsRead}
+            className="px-4 py-2 text-blue-600 hover:text-blue-700 font-medium text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Mark all as read
+            {markingAllAsRead ? "Marking..." : "Mark all as read"}
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(["all", "unread", "critical"] as const).map((f) => (
           <button
             key={f}
@@ -153,23 +233,58 @@ export function AlertsList() {
       {/* Alerts List */}
       {filteredAlerts.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-          <p className="text-gray-500 text-lg">No alerts yet</p>
-          <p className="text-gray-400 text-sm mt-1">We'll notify you when something important happens.</p>
+          <p className="text-gray-500 text-lg">{alerts.length === 0 ? "No alerts yet" : "No alerts match this filter"}</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {alerts.length === 0
+              ? "We'll notify you when something important happens."
+              : "Try switching filters to see more alerts."}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {alerts.length === 0 ? (
+              <>
+                <button type="button" onClick={() => router.push("/creators")} className="btn-ghost text-sm">
+                  Go to Creators
+                </button>
+                <button type="button" onClick={() => router.push("/")} className="btn-ghost text-sm">
+                  Open Dashboard
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setFilter("all")} className="btn-ghost text-sm">
+                Show all alerts
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
           {filteredAlerts.map((alert) => (
             <div
               key={alert.id}
-              onClick={() => handleMarkAsRead(alert.id)}
+              onClick={() => {
+                if (markAsReadOnOpen && !alert.read) {
+                  handleMarkAsRead(alert.id);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  if (markAsReadOnOpen && !alert.read) {
+                    handleMarkAsRead(alert.id);
+                  }
+                }
+              }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Alert ${alert.title}`}
               className={`border rounded-lg p-4 cursor-pointer transition-all ${SEVERITY_COLORS[alert.severity] || SEVERITY_COLORS.info} ${
                 alert.read ? "opacity-60" : ""
               }`}
             >
-              <div className="flex items-start gap-4">
+                <div className="flex items-start gap-3 sm:gap-4">
                 <div className="text-2xl flex-shrink-0">{ALERT_ICONS[alert.type] || "ℹ️"}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start justify-between gap-3 sm:gap-4">
                     <div>
                       <h3 className="font-semibold text-gray-900">{alert.title}</h3>
                       {alert.message && <p className="text-gray-700 text-sm mt-1">{alert.message}</p>}
@@ -186,6 +301,8 @@ export function AlertsList() {
           ))}
         </div>
       )}
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

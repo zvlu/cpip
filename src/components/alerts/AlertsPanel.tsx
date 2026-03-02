@@ -1,15 +1,20 @@
-﻿"use client";
+"use client";
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api/client";
 
 const ICONS: Record<string, string> = { score_drop: "📉", score_rise: "📈", viral_post: "🔥", inactive: "😴", new_milestone: "🏆", anomaly: "⚠️", campaign_target: "🎯" };
 const SEV: Record<string, string> = { critical: "bg-red-500", warning: "bg-amber-500", info: "bg-blue-500" };
 
 export function AlertsPanel() {
   const [alerts, setAlerts] = useState<any[]>([]);
-  useEffect(() => { fetch("/api/alerts").then((r) => r.json()).then((d) => setAlerts(d.data || [])); }, []);
+  useEffect(() => { apiFetch("/api/alerts").then((r) => r.json()).then((d) => setAlerts(d.data || [])); }, []);
 
   const dismiss = async (id: string) => {
-    await fetch("/api/alerts", { method: "PATCH", body: JSON.stringify({ id, read: true }) });
+    await apiFetch("/api/alerts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, read: true }),
+    });
     setAlerts((a) => a.filter((x) => x.id !== id));
   };
 

@@ -1,4 +1,4 @@
-﻿# CPIP — Creator Performance Intelligence Platform
+# CPIP — Creator Performance Intelligence Platform
 
 SaaS MVP for brands running TikTok affiliate creator programs. Track engagement, estimate revenue, score creators, surface insights.
 
@@ -20,8 +20,12 @@ npm install
 cp .env.example .env.local
 # Fill in your Supabase credentials
 
-# 3. Run the database migration
-# Go to Supabase dashboard > SQL Editor > paste supabase/migrations/001_initial_schema.sql
+# 3. Run database migrations in order
+# 001_initial_schema.sql
+# 002_semantic_analysis.sql
+# 003_backend_hardening.sql
+# 004_demo_mode_preference.sql
+# 005_rls_hardening.sql
 
 # 4. Install Playwright browsers (for scraping)
 npx playwright install chromium
@@ -29,6 +33,29 @@ npx playwright install chromium
 # 5. Start dev server
 npm run dev
 ```
+
+## Supabase Auth Setup (Forgot Password)
+
+In your Supabase project, configure Auth so reset emails can return to this app:
+
+- Go to **Authentication -> URL Configuration**.
+- Set **Site URL** to your app URL (for local: `http://localhost:3000`).
+- Add this to **Redirect URLs**:
+  - `http://localhost:3000/auth/reset-password`
+  - your production equivalent, for example `https://your-domain.com/auth/reset-password`
+
+## Production Readiness
+
+For company deployment, use this baseline:
+
+- Set all required env vars from `.env.example` in your hosting platform secrets.
+- Keep `ALLOW_GUEST_MODE=false` in production (guest mode is for local/demo only).
+- Keep `ENABLE_PUBLIC_SIGNUP=false` unless you intentionally want open self-serve signup.
+- Run all SQL migrations in order (`001` through `005`).
+- Use `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` in CI before every merge.
+- Configure monitoring/uptime checks for `GET /api/health` and `GET /api/health/supabase`.
+- Rotate `SUPABASE_SERVICE_ROLE_KEY` and any model provider keys on a regular schedule.
+- Restrict dashboard access behind your SSO/auth layer before exposing to client teams.
 
 ## Project Structure
 
@@ -59,7 +86,11 @@ scraper/
 └── run.ts                   # Standalone scraper CLI
 supabase/
 └── migrations/
-    └── 001_initial_schema.sql
+    ├── 001_initial_schema.sql
+    ├── 002_semantic_analysis.sql
+    ├── 003_backend_hardening.sql
+    ├── 004_demo_mode_preference.sql
+    └── 005_rls_hardening.sql
 ```
 
 ## Revenue Model

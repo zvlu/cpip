@@ -1,4 +1,4 @@
-﻿-- 001_initial_schema.sql
+-- 001 initial schema
 create extension if not exists "uuid-ossp";
 
 create table organizations (

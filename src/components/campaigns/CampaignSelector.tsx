@@ -18,7 +18,7 @@ export function CampaignSelector() {
       <div className="relative">
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-900 font-medium text-sm"
+          className="flex w-full items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-900 font-medium text-sm"
         >
           <span>📊</span>
           <span className="truncate max-w-xs">
@@ -30,7 +30,7 @@ export function CampaignSelector() {
         </button>
 
         {isDropdownOpen && (
-          <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50">
+          <div className="absolute top-full left-0 mt-2 w-full sm:w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50">
             <div className="p-2 border-b border-gray-200">
               <button
                 onClick={() => {

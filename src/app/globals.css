@@ -109,15 +109,15 @@ html {
   }
 
   .card-header {
-    @apply px-6 py-4 border-b border-gray-200;
+    @apply px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-200;
   }
 
   .card-body {
-    @apply px-6 py-4;
+    @apply px-4 py-3 sm:px-6 sm:py-4;
   }
 
   .card-footer {
-    @apply px-6 py-4 border-t border-gray-200 bg-gray-50;
+    @apply px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-200 bg-gray-50;
   }
 
   /* Badge styles */

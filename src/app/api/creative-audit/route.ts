@@ -1,20 +1,28 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeContentHooks } from "@/lib/hookAnalysis";
+import { z } from "zod";
+import { assertCampaignOwnedByOrg, assertCreatorOwnedByOrg } from "@/lib/api/authorization";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
+
+const CreativeAuditQuerySchema = z.object({
+  creator_id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+});
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId } = auth;
     const { searchParams } = new URL(req.url);
-    const creator_id = searchParams.get("creator_id");
-    const campaign_id = searchParams.get("campaign_id");
-
-    if (!creator_id || !campaign_id) {
-      return NextResponse.json(
-        { error: "creator_id and campaign_id are required" },
-        { status: 400 }
-      );
-    }
+    const { creator_id, campaign_id } = CreativeAuditQuerySchema.parse({
+      creator_id: searchParams.get("creator_id"),
+      campaign_id: searchParams.get("campaign_id"),
+    });
+    await assertCreatorOwnedByOrg(supabase, creator_id, orgId);
+    await assertCampaignOwnedByOrg(supabase, campaign_id, orgId);
 
     // Fetch posts from last 90 days for comprehensive analysis
     const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString();
@@ -27,7 +35,7 @@ export async function GET(req: NextRequest) {
       .order("posted_at", { ascending: false });
 
     if (postsError) {
-      return NextResponse.json({ error: postsError.message }, { status: 500 });
+      throw postsError;
     }
 
     if (!posts || posts.length === 0) {
@@ -59,9 +67,8 @@ export async function GET(req: NextRequest) {
       analysis_date: new Date().toISOString(),
     };
 
-    return NextResponse.json(response);
-  } catch (error: any) {
-    console.error("Creative audit API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiSuccess(response, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Creative audit API error");
   }
 }

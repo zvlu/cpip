@@ -1,8 +1,8 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
+import { assertDemoModeWritable, assertElevatedRole } from "@/lib/api/authorization";
+import { getRequestId, handleApiError, apiSuccess } from "@/lib/api/response";
 
 const CreateCampaignSchema = z.object({
   name: z.string().min(1).max(255),
@@ -14,29 +14,34 @@ const CreateCampaignSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
-    const { searchParams } = new URL(req.url);
-    const org_id = searchParams.get("org_id") || DEMO_ORG_ID;
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId } = auth;
 
     const { data, error } = await supabase
       .from("campaigns")
       .select("*")
-      .eq("org_id", org_id)
+      .eq("org_id", orgId)
       .eq("status", "active")
       .order("created_at", { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data });
-  } catch (error: any) {
-    console.error("Campaigns GET error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+    return apiSuccess({ data }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Campaigns GET error");
   }
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId, role, isDemoMode } = auth;
+    assertElevatedRole(role);
+    assertDemoModeWritable(isDemoMode);
     const body = await req.json();
     const parsed = CreateCampaignSchema.safeParse(body);
 
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("campaigns")
       .insert({
-        org_id: DEMO_ORG_ID,
+        org_id: orgId,
         name: parsed.data.name,
         product_name: parsed.data.product_name || null,
         aov: parsed.data.aov,
@@ -59,10 +64,9 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data }, { status: 201 });
-  } catch (error: any) {
-    console.error("Campaigns POST error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+    return apiSuccess({ data }, 201, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Campaigns POST error");
   }
 }

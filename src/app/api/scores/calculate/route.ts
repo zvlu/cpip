@@ -1,22 +1,39 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { calculateCreatorScore } from "@/lib/scoring";
+import { z } from "zod";
+import { assertCampaignOwnedByOrg, assertDemoModeWritable, assertElevatedRole } from "@/lib/api/authorization";
+import { buildRateLimitKey, enforceRateLimit } from "@/lib/api/rateLimit";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
+import { maybeCreateScoreAlerts } from "@/lib/alerts";
+
+const ScoresCalculateBodySchema = z.object({
+  campaign_id: z.string().uuid(),
+  creator_id: z.string().uuid().optional(),
+});
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
-    const { campaign_id, creator_id } = await req.json();
-
-    if (!campaign_id) {
-      return NextResponse.json({ error: "campaign_id is required" }, { status: 400 });
-    }
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId, role, user, isDemoMode } = auth;
+    assertElevatedRole(role);
+    assertDemoModeWritable(isDemoMode);
+    const { campaign_id, creator_id } = ScoresCalculateBodySchema.parse(await req.json());
+    const identity = user?.id ?? "guest";
+    enforceRateLimit(buildRateLimitKey("scores-calculate", `${orgId}:${identity}`), {
+      windowMs: 60_000,
+      maxRequests: 10,
+    });
+    await assertCampaignOwnedByOrg(supabase, campaign_id, orgId);
 
     let query = supabase.from("campaign_creators").select("creator_id, creators(*)").eq("campaign_id", campaign_id);
     if (creator_id) query = query.eq("creator_id", creator_id);
     const { data: cc, error: ccError } = await query;
 
     if (ccError) {
-      return NextResponse.json({ error: ccError.message }, { status: 500 });
+      throw ccError;
     }
 
     if (!cc || cc.length === 0) {
@@ -25,6 +42,13 @@ export async function POST(req: NextRequest) {
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
     const scores = [];
+    const alertCandidates: Array<{
+      creatorId: string;
+      creatorName: string | null;
+      previousOverallScore: number | null;
+      currentOverallScore: number;
+      latestPostAt: string | null;
+    }> = [];
 
     for (const c of cc) {
       try {
@@ -54,8 +78,20 @@ export async function POST(req: NextRequest) {
           console.warn(`Failed to fetch previous score for creator ${c.creator_id}:`, prevError);
         }
 
-        const score = calculateCreatorScore(posts || [], prev || null, c.creators as any);
+        const creatorProfile = Array.isArray(c.creators) ? c.creators[0] : c.creators;
+        const score = calculateCreatorScore(posts || [], prev || null, creatorProfile as any);
         scores.push({ ...score, creator_id: c.creator_id, campaign_id });
+        alertCandidates.push({
+          creatorId: c.creator_id,
+          creatorName: creatorProfile?.display_name || creatorProfile?.tiktok_username || null,
+          previousOverallScore:
+            prev && prev.overall_score !== null && prev.overall_score !== undefined
+              ? Number(prev.overall_score)
+              : null,
+          currentOverallScore: Number(score.overall_score || 0),
+          latestPostAt:
+            posts && posts.length > 0 && posts[0].posted_at ? String(posts[0].posted_at) : null,
+        });
       } catch (err: any) {
         console.error(`Error calculating score for creator ${c.creator_id}:`, err);
         continue;
@@ -71,10 +107,25 @@ export async function POST(req: NextRequest) {
       .upsert(scores, { onConflict: "creator_id,campaign_id,score_date" })
       .select();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ scores: data || [] });
-  } catch (error: any) {
-    console.error("Scores calculate API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+
+    await Promise.all(
+      alertCandidates.map((candidate) =>
+        maybeCreateScoreAlerts({
+          supabase,
+          orgId,
+          creatorId: candidate.creatorId,
+          creatorName: candidate.creatorName,
+          campaignId: campaign_id,
+          previousOverallScore: candidate.previousOverallScore,
+          currentOverallScore: candidate.currentOverallScore,
+          latestPostAt: candidate.latestPostAt,
+        })
+      )
+    );
+
+    return apiSuccess({ scores: data || [] }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Scores calculate API error");
   }
 }

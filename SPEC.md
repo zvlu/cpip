@@ -17,11 +17,13 @@
 │  (Vercel)    │     │  (Vercel)     │     │  + Auth      │
 └──────────────┘     └──────┬───────┘     └──────────────┘
                            │
-                    ┌──────▼───────┐
-                    │  TikTok      │
-                    │  Scraper     │
-                    │  (Cron/Queue)│
-                    └──────────────┘
+                 ┌─────────┴─────────┐
+                 │                   │
+          ┌──────▼───────┐    ┌──────▼─────────┐
+          │  TikTok      │    │  Semantic AI    │
+          │  Scraper     │    │  (LLM + Fallback│
+          │  (Cron/Queue)│    │   Heuristics)   │
+          └──────────────┘    └─────────────────┘
 ```
 
 **Stack:**
@@ -29,6 +31,7 @@
 - **Backend:** Next.js API routes + Supabase Edge Functions
 - **Database:** Supabase (PostgreSQL + Row Level Security)
 - **Scraping:** Playwright (fallback) + TikTok Research API (if approved)
+- **Semantic Analysis:** OpenAI API (optional) + deterministic local heuristics fallback
 - **Hosting:** Vercel + Supabase hosted
 - **Auth:** Supabase Auth (magic link for brand users)
 - **Jobs:** Vercel Cron or Supabase pg_cron for scheduled scrapes
@@ -206,6 +209,55 @@ create table performance_scores (
 create index idx_scores_creator_date on performance_scores(creator_id, score_date desc);
 
 -- ============================================
+-- POST-LEVEL SEMANTIC FEATURES
+-- ============================================
+create table post_semantic_features (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  creator_id uuid not null references creators(id) on delete cascade,
+  campaign_id text,
+  topic_labels text[] default '{}',
+  hook_type text,
+  cta_strength numeric(5,2) default 0,
+  sentiment_score numeric(5,2) default 50,
+  brand_safety_score numeric(5,2) default 100,
+  audience_intent text,
+  semantic_summary text,
+  model_provider text,
+  model_name text,
+  confidence numeric(5,2) default 0,
+  raw_response jsonb default '{}',
+  analyzed_at timestamptz default now(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(post_id)
+);
+
+create index idx_post_semantic_creator on post_semantic_features(creator_id);
+create index idx_post_semantic_campaign on post_semantic_features(campaign_id);
+
+-- ============================================
+-- CREATOR-LEVEL SEMANTIC PROFILE
+-- ============================================
+create table creator_semantic_profiles (
+  id uuid primary key default uuid_generate_v4(),
+  creator_id uuid not null references creators(id) on delete cascade,
+  campaign_id text not null,
+  top_topics text[] default '{}',
+  content_consistency numeric(5,2) default 0,
+  average_sentiment numeric(5,2) default 0,
+  audience_demographic_match numeric(5,2) default 50,
+  recommendations text[] default '{}',
+  metadata jsonb default '{}',
+  analyzed_at timestamptz default now(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(creator_id, campaign_id)
+);
+
+create index idx_creator_semantic_profiles_campaign on creator_semantic_profiles(campaign_id);
+
+-- ============================================
 -- ALERTS
 -- ============================================
 create table alerts (
@@ -379,14 +431,17 @@ export async function PATCH(req: NextRequest) {
 ### File: `src/app/api/scrape/route.ts`
 
 ```typescript
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeTikTokPosts } from '@/lib/scraper';
+import { calculateCreatorScore } from '@/lib/scoring';
+import { analyzePostSemantics, buildCreatorSemanticProfile } from '@/lib/semanticAnalysis';
+
+const DEMO_CAMPAIGN_ID = 'default';
 
 // POST /api/scrape — trigger scrape for a creator
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createServerClient();
   const { creator_id } = await req.json();
 
   const { data: creator } = await supabase
@@ -397,14 +452,14 @@ export async function POST(req: NextRequest) {
 
   if (!creator) return NextResponse.json({ error: 'Creator not found' }, { status: 404 });
 
-  const startTime = Date.now();
+  const start = Date.now();
 
   try {
     const posts = await scrapeTikTokPosts(creator.tiktok_username);
 
-    // Upsert posts
-    const postRecords = posts.map((p: any) => ({
+    const records = posts.map((p: any) => ({
       creator_id,
+      campaign_id: DEMO_CAMPAIGN_ID,
       tiktok_post_id: p.id,
       url: p.url,
       caption: p.caption,
@@ -420,29 +475,67 @@ export async function POST(req: NextRequest) {
       scraped_at: new Date().toISOString(),
     }));
 
-    const { data, error } = await supabase
+    const { data: insertedPosts } = await supabase
       .from('posts')
-      .upsert(postRecords, { onConflict: 'tiktok_post_id' })
+      .upsert(records, { onConflict: 'tiktok_post_id' })
       .select();
 
-    // Log scrape
+    // 1) Auto-calculate revenue estimates
+    // 2) Auto-run semantic analysis + creator semantic profile
+    // 3) Auto-calculate creator performance score
+    // (all in same scrape pipeline)
+
     await supabase.from('scrape_log').insert({
       creator_id,
       status: 'success',
       posts_found: posts.length,
-      duration_ms: Date.now() - startTime,
+      duration_ms: Date.now() - start,
     });
 
-    return NextResponse.json({ scraped: data?.length || 0 });
+    return NextResponse.json({ scraped: insertedPosts?.length || 0 });
   } catch (err: any) {
     await supabase.from('scrape_log').insert({
       creator_id,
       status: 'failed',
       error_message: err.message,
-      duration_ms: Date.now() - startTime,
+      duration_ms: Date.now() - start,
     });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+}
+```
+
+### File: `src/app/api/semantic/analyze/route.ts`
+
+```typescript
+import { createServerClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { analyzePostSemantics, buildCreatorSemanticProfile } from '@/lib/semanticAnalysis';
+
+// POST /api/semantic/analyze — re-run semantic analysis for existing posts
+export async function POST(req: NextRequest) {
+  const supabase = createServerClient();
+  const { creator_id, campaign_id } = await req.json();
+
+  if (!creator_id || !campaign_id) {
+    return NextResponse.json({ error: 'creator_id and campaign_id are required' }, { status: 400 });
+  }
+
+  const { data: posts } = await supabase
+    .from('posts')
+    .select('*')
+    .eq('creator_id', creator_id)
+    .eq('campaign_id', campaign_id)
+    .order('posted_at', { ascending: false })
+    .limit(100);
+
+  if (!posts?.length) {
+    return NextResponse.json({ error: 'No posts found for this creator/campaign' }, { status: 404 });
+  }
+
+  // Analyze each post and upsert post_semantic_features
+  // Then aggregate into creator_semantic_profiles
+  return NextResponse.json({ success: true });
 }
 ```
 

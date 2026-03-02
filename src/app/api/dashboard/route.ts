@@ -1,41 +1,60 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { assertCampaignOwnedByOrg } from "@/lib/api/authorization";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
 
-const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
-const DEMO_CAMPAIGN_ID = "default";
+const DashboardQuerySchema = z.object({
+  campaign_id: z.union([z.string().uuid(), z.literal("default")]).optional(),
+});
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId } = auth;
     const { searchParams } = new URL(req.url);
-    const campaign_id = searchParams.get("campaign_id") || DEMO_CAMPAIGN_ID;
+    const parsed = DashboardQuerySchema.parse({
+      campaign_id: searchParams.get("campaign_id") || undefined,
+    });
+    let campaign_id = parsed.campaign_id ?? null;
 
-    if (!campaign_id) {
-      return NextResponse.json({ error: "Campaign ID is required" }, { status: 400 });
+    if (!campaign_id || campaign_id === "default") {
+      const { data: fallbackCampaign } = await supabase
+        .from("campaigns")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      campaign_id = fallbackCampaign?.id ?? null;
+    } else {
+      await assertCampaignOwnedByOrg(supabase, campaign_id, orgId);
     }
 
-    const org_id = DEMO_ORG_ID;
     const today = new Date().toISOString().split("T")[0];
 
     const [creatorsRes, topRes, postsRes, revRes, alertsRes, tierRes] = await Promise.all([
-      supabase.from("creators").select("id", { count: "exact" }).eq("org_id", org_id).eq("status", "active"),
+      supabase.from("creators").select("id", { count: "exact" }).eq("org_id", orgId).eq("status", "active"),
       supabase
         .from("performance_scores")
         .select("*, creators(tiktok_username, display_name, avatar_url)")
-        .eq("campaign_id", campaign_id)
+        .eq("campaign_id", campaign_id || "")
         .eq("score_date", today)
         .order("overall_score", { ascending: false })
         .limit(10),
       supabase
         .from("posts")
         .select("*, creators(tiktok_username, display_name)")
-        .eq("campaign_id", campaign_id)
+        .eq("campaign_id", campaign_id || "")
         .gte("posted_at", new Date(Date.now() - 7 * 86400000).toISOString())
         .order("views", { ascending: false })
         .limit(20),
-      supabase.from("revenue_estimates").select("estimated_revenue").eq("campaign_id", campaign_id),
-      supabase.from("alerts").select("*").eq("org_id", org_id).eq("read", false).order("created_at", { ascending: false }).limit(10),
-      supabase.from("performance_scores").select("tier").eq("campaign_id", campaign_id).eq("score_date", today),
+      supabase.from("revenue_estimates").select("estimated_revenue").eq("campaign_id", campaign_id || ""),
+      supabase.from("alerts").select("*").eq("org_id", orgId).eq("read", false).order("created_at", { ascending: false }).limit(10),
+      supabase.from("performance_scores").select("tier").eq("campaign_id", campaign_id || "").eq("score_date", today),
     ]);
 
     // Log any errors for debugging
@@ -53,16 +72,15 @@ export async function GET(req: NextRequest) {
       {}
     );
 
-    return NextResponse.json({
+    return apiSuccess({
       total_creators: creatorsRes.count || 0,
       total_estimated_revenue: totalRevenue,
       top_performers: topRes.data || [],
       recent_top_posts: postsRes.data || [],
       unread_alerts: alertsRes.data || [],
       tier_distribution: tierDist,
-    });
-  } catch (error: any) {
-    console.error("Dashboard API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Dashboard API error");
   }
 }

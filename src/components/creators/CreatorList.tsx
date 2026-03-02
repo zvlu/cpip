@@ -1,23 +1,40 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { apiFetch } from "@/lib/api/client";
+import { useAuthUser } from "@/lib/hooks/useAuthUser";
 
 const TIER_COLORS: Record<string, string> = { S: "bg-emerald-500", A: "bg-blue-500", B: "bg-amber-500", C: "bg-orange-500", D: "bg-red-500" };
 
-export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSelect: (id: string) => void }) {
+export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onSelect?: (id: string) => void }) {
   const [creators, setCreators] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuthUser();
 
   useEffect(() => {
     const fetchCreators = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/creators?campaign_id=${campaignId}`);
-        if (!res.ok) throw new Error("Failed to load creators");
+        const query = campaignId ? `?campaign_id=${encodeURIComponent(campaignId)}` : "";
+        const res = await apiFetch(`/api/creators${query}`);
+        if (!res.ok) {
+          let message = "Failed to load creators";
+          try {
+            const body = await res.json();
+            if (body?.error) message = body.error;
+          } catch {
+            // No-op: keep fallback message
+          }
+          if (res.status === 401) {
+            message = "Your session has expired. Please sign in again.";
+          }
+          throw new Error(message);
+        }
         const json = await res.json();
         setCreators(json.data || []);
       } catch (err: any) {
@@ -41,6 +58,25 @@ export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSe
   }
 
   if (error) {
+    if (!user) {
+      return (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <p className="text-yellow-900 font-medium">Sign in to load creators</p>
+          <p className="text-yellow-800 text-sm mt-1">
+            You are currently signed out, so creator data may be unavailable.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/auth"
+              className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Go to sign in
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
         <p className="text-red-800 font-medium">Failed to load creators</p>
@@ -61,7 +97,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSe
           placeholder="Search creators by username..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all"
+          className="w-full sm:max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all"
         />
       </div>
 
@@ -70,7 +106,8 @@ export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSe
         <EmptyState icon="🔍" title="No results found" description={`No creators match "${search}"`} />
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Creator</th>
@@ -86,8 +123,21 @@ export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSe
                 return (
                   <tr
                     key={creator.id}
-                    onClick={() => onSelect(creator.id)}
-                    className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={onSelect ? () => onSelect(creator.id) : undefined}
+                    onKeyDown={
+                      onSelect
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onSelect(creator.id);
+                            }
+                          }
+                        : undefined
+                    }
+                    tabIndex={onSelect ? 0 : undefined}
+                    role={onSelect ? "button" : undefined}
+                    aria-label={onSelect ? `Open details for @${creator.tiktok_username}` : undefined}
+                    className={`border-b border-gray-100 transition-colors ${onSelect ? "hover:bg-gray-50 cursor-pointer" : ""}`}
                   >
                     <td className="py-4 px-6">
                       <div className="font-medium text-gray-900">@{creator.tiktok_username}</div>
@@ -112,6 +162,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId: string; onSe
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

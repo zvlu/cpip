@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { apiFetch } from "@/lib/api/client";
 
 export function LookalikeDiscovery({ creatorId, campaignId }: { creatorId: string; campaignId: string }) {
   const [lookalikes, setLookalikes] = useState<any>(null);
@@ -14,9 +15,12 @@ export function LookalikeDiscovery({ creatorId, campaignId }: { creatorId: strin
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/lookalike-discovery?creator_id=${creatorId}&campaign_id=${campaignId}`);
-        if (!res.ok) throw new Error("Failed to load lookalike discovery");
+        const res = await apiFetch(`/api/lookalike-discovery?creator_id=${creatorId}&campaign_id=${campaignId}`);
         const json = await res.json();
+        if (!res.ok) {
+          const message = json?.error?.message || json?.error || "Failed to load lookalike discovery";
+          throw new Error(message);
+        }
         setLookalikes(json);
       } catch (err: any) {
         setError(err.message);
@@ -43,10 +47,13 @@ export function LookalikeDiscovery({ creatorId, campaignId }: { creatorId: strin
   }
 
   if (error) {
+    const likelyNoPeers = /no other creators/i.test(error);
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-        <p className="text-red-800 font-medium">Failed to load lookalike discovery</p>
-        <p className="text-red-700 text-sm mt-1">{error}</p>
+      <div className={`rounded-lg p-6 ${likelyNoPeers ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200"}`}>
+        <p className={`${likelyNoPeers ? "text-yellow-900" : "text-red-800"} font-medium`}>
+          {likelyNoPeers ? "Need more creators in this campaign" : "Failed to load lookalike discovery"}
+        </p>
+        <p className={`${likelyNoPeers ? "text-yellow-800" : "text-red-700"} text-sm mt-1`}>{error}</p>
       </div>
     );
   }

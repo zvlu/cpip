@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { InfoCard } from "@/components/ui/InfoCard";
+import { useCampaign } from "@/lib/context/CampaignContext";
+import { apiFetch } from "@/lib/api/client";
 
 interface AddCreatorModalProps {
   isOpen: boolean;
@@ -12,6 +14,7 @@ interface AddCreatorModalProps {
 const CATEGORIES = ["Beauty", "Tech", "Fitness", "Food", "Lifestyle", "Fashion", "Health", "Entertainment", "Other"];
 
 export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalProps) {
+  const { selectedCampaign } = useCampaign();
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +50,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
         throw new Error("Username is required");
       }
 
-      const createRes = await fetch("/api/creators", {
+      const createRes = await apiFetch("/api/creators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -55,6 +58,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           display_name: formData.display_name || undefined,
           category: formData.category || undefined,
           tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()) : [],
+          campaign_id: selectedCampaign?.id,
         }),
       });
 
@@ -64,11 +68,15 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
       }
 
       const { data: creator } = await createRes.json();
-      setSuccess(`✅ Creator added! Now scraping posts...`);
+      setSuccess(
+        selectedCampaign?.name
+          ? `✅ Creator added to ${selectedCampaign.name}. Starting scrape...`
+          : "✅ Creator added. Starting scrape..."
+      );
 
       setScraping(true);
       try {
-        const scrapeRes = await fetch("/api/scrape", {
+        const scrapeRes = await apiFetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ creator_id: creator.id }),
@@ -76,12 +84,12 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
 
         if (scrapeRes.ok) {
           const { scraped } = await scrapeRes.json();
-          setSuccess(`✅ Perfect! Added creator and scraped ${scraped} posts.`);
+          setSuccess(`✅ Done. Added creator and scraped ${scraped} posts.`);
         } else {
-          setSuccess(`✅ Creator added! (Scrape pending)`);
+          setSuccess(`✅ Creator added. Scrape is pending.`);
         }
       } catch (err: any) {
-        setSuccess(`✅ Creator added! (Scrape will run in background)`);
+        setSuccess(`✅ Creator added. Scrape will continue in the background.`);
       } finally {
         setScraping(false);
       }
@@ -106,7 +114,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
         {/* Header */}
         <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
           <h2 className="text-2xl font-bold text-gray-900">Add Creator</h2>
-          <p className="text-sm text-gray-600 mt-1">Quickly add a TikTok creator to your campaign</p>
+          <p className="text-sm text-gray-600 mt-1">Quickly add a TikTok creator to your workspace</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
@@ -118,6 +126,12 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
             description="Add the creator's TikTok username and we'll automatically analyze their content and performance."
             dismissible
           />
+
+          {!selectedCampaign?.id && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm font-medium">
+              No campaign selected. Creator will be tracked org-wide and can be linked to a campaign later.
+            </div>
+          )}
 
           {/* Error Alert */}
           {error && (
@@ -137,7 +151,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">TikTok Username</label>
-              <Tooltip text="Enter the creator's TikTok handle. You can include or omit the @ symbol.">
+              <Tooltip text="Enter the creator&apos;s TikTok handle. You can include or omit the @ symbol.">
                 <span className="text-gray-400 cursor-help font-bold">?</span>
               </Tooltip>
             </div>
@@ -151,14 +165,14 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
               required
               disabled={loading || scraping}
             />
-            <p className="text-xs text-gray-500 mt-1.5">💡 Copy from the creator's TikTok profile URL</p>
+            <p className="text-xs text-gray-500 mt-1.5">💡 Copy from the creator&apos;s TikTok profile URL</p>
           </div>
 
           {/* Display Name */}
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">Display Name</label>
-              <Tooltip text="The creator's real name or brand name. This helps you identify them in reports.">
+              <Tooltip text="The creator&apos;s real name or brand name. This helps you identify them in reports.">
                 <span className="text-gray-400 cursor-help font-bold">?</span>
               </Tooltip>
             </div>
@@ -224,7 +238,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
             icon="⚡"
             type="info"
             title="What happens next"
-            description="We'll analyze the creator's posts, calculate their performance score, and estimate revenue potential."
+            description="We'll sync recent posts first. Campaign-specific score and revenue analytics are available once the creator is linked to a campaign."
             dismissible
           />
 

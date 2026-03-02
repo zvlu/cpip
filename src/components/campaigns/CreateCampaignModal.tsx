@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCampaign } from "@/lib/context/CampaignContext";
+import { loadAppSettings } from "@/lib/settings";
+import { apiFetch } from "@/lib/api/client";
 
 interface CreateCampaignModalProps {
   isOpen: boolean;
@@ -8,17 +10,27 @@ interface CreateCampaignModalProps {
 }
 
 export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProps) {
-  const { refreshCampaigns } = useCampaign();
+  const { refreshCampaigns, setSelectedCampaign } = useCampaign();
+  const getDefaultFormData = useCallback(() => {
+    const appSettings = loadAppSettings();
+    return {
+      name: "",
+      product_name: "",
+      aov: appSettings.campaignDefaults.aov,
+      commission_rate: appSettings.campaignDefaults.commissionRatePct,
+      default_ctr: appSettings.campaignDefaults.defaultCtrPct,
+      default_cvr: appSettings.campaignDefaults.defaultCvrPct,
+    };
+  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    product_name: "",
-    aov: 45.0,
-    commission_rate: 15,
-    default_ctr: 2,
-    default_cvr: 3,
-  });
+  const [formData, setFormData] = useState(getDefaultFormData);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(getDefaultFormData());
+    }
+  }, [getDefaultFormData, isOpen]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -34,7 +46,7 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
     setLoading(true);
 
     try {
-      const res = await fetch("/api/campaigns", {
+      const res = await apiFetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -52,8 +64,12 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
         throw new Error(apiError || "Failed to create campaign");
       }
 
+      const json = await res.json();
+      if (json?.data) {
+        setSelectedCampaign(json.data);
+      }
       await refreshCampaigns();
-      setFormData({ name: "", product_name: "", aov: 45.0, commission_rate: 15, default_ctr: 2, default_cvr: 3 });
+      setFormData(getDefaultFormData());
       onClose();
     } catch (err: any) {
       setError(err.message);

@@ -2,8 +2,19 @@
 import { useEffect, useState } from "react";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { apiFetch } from "@/lib/api/client";
 
-export function CreativeAudit({ creatorId, campaignId }: { creatorId: string; campaignId: string }) {
+export function CreativeAudit({
+  creatorId,
+  campaignId,
+  onRunScrape,
+  scrapeLoading,
+}: {
+  creatorId: string;
+  campaignId: string;
+  onRunScrape: () => Promise<void>;
+  scrapeLoading: boolean;
+}) {
   const [audit, setAudit] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,9 +24,12 @@ export function CreativeAudit({ creatorId, campaignId }: { creatorId: string; ca
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/creative-audit?creator_id=${creatorId}&campaign_id=${campaignId}`);
-        if (!res.ok) throw new Error("Failed to load creative audit");
+        const res = await apiFetch(`/api/creative-audit?creator_id=${creatorId}&campaign_id=${campaignId}`);
         const json = await res.json();
+        if (!res.ok) {
+          const message = json?.error?.message || json?.error || "Failed to load creative audit";
+          throw new Error(message);
+        }
         setAudit(json);
       } catch (err: any) {
         setError(err.message);
@@ -36,10 +50,18 @@ export function CreativeAudit({ creatorId, campaignId }: { creatorId: string; ca
   }
 
   if (error) {
+    const looksLikeNoPosts = /no posts found/i.test(error);
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-        <p className="text-red-800 font-medium">Failed to load creative audit</p>
-        <p className="text-red-700 text-sm mt-1">{error}</p>
+      <div className={`rounded-lg p-6 ${looksLikeNoPosts ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200"}`}>
+        <p className={`${looksLikeNoPosts ? "text-yellow-900" : "text-red-800"} font-medium`}>
+          {looksLikeNoPosts ? "Creative audit needs post data" : "Failed to load creative audit"}
+        </p>
+        <p className={`${looksLikeNoPosts ? "text-yellow-800" : "text-red-700"} text-sm mt-1`}>{error}</p>
+        {looksLikeNoPosts && (
+          <button type="button" onClick={onRunScrape} disabled={scrapeLoading} className="btn-secondary text-sm mt-4">
+            {scrapeLoading ? "Scraping..." : "Run Scrape"}
+          </button>
+        )}
       </div>
     );
   }

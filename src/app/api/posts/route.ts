@@ -1,20 +1,37 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { assertCampaignOwnedByOrg, assertCreatorOwnedByOrg } from "@/lib/api/authorization";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
+
+const PostsQuerySchema = z
+  .object({
+    creator_id: z.string().uuid().optional(),
+    campaign_id: z.string().uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .refine((value) => Boolean(value.creator_id || value.campaign_id), {
+    message: "Either creator_id or campaign_id is required",
+  });
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase } = auth;
     const { searchParams } = new URL(req.url);
-    const creator_id = searchParams.get("creator_id");
-    const campaign_id = searchParams.get("campaign_id");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
+    const { creator_id, campaign_id, limit } = PostsQuerySchema.parse({
+      creator_id: searchParams.get("creator_id") || undefined,
+      campaign_id: searchParams.get("campaign_id") || undefined,
+      limit: searchParams.get("limit") || undefined,
+    });
 
-    // Require at least one filter to prevent fetching all posts
-    if (!creator_id && !campaign_id) {
-      return NextResponse.json(
-        { error: "Either creator_id or campaign_id is required" },
-        { status: 400 }
-      );
+    if (creator_id) {
+      await assertCreatorOwnedByOrg(supabase, creator_id, auth.orgId);
+    }
+    if (campaign_id) {
+      await assertCampaignOwnedByOrg(supabase, campaign_id, auth.orgId);
     }
 
     let query = supabase
@@ -27,10 +44,9 @@ export async function GET(req: NextRequest) {
     if (campaign_id) query = query.eq("campaign_id", campaign_id);
 
     const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data });
-  } catch (error: any) {
-    console.error("Posts API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+    return apiSuccess({ data }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Posts API error");
   }
 }

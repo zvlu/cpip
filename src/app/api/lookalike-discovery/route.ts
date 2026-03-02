@@ -1,31 +1,44 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { calculateSimilarityScore, generateOutreachSnippet } from "@/lib/lookalikeDiscovery";
+import { z } from "zod";
+import { assertCampaignOwnedByOrg, assertCreatorOwnedByOrg } from "@/lib/api/authorization";
+import { buildRateLimitKey, enforceRateLimit } from "@/lib/api/rateLimit";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
+
+const LookalikeQuerySchema = z.object({
+  creator_id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+});
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId, user } = auth;
     const { searchParams } = new URL(req.url);
-    const creator_id = searchParams.get("creator_id");
-    const campaign_id = searchParams.get("campaign_id");
-
-    if (!creator_id || !campaign_id) {
-      return NextResponse.json(
-        { error: "creator_id and campaign_id are required" },
-        { status: 400 }
-      );
-    }
+    const { creator_id, campaign_id } = LookalikeQuerySchema.parse({
+      creator_id: searchParams.get("creator_id"),
+      campaign_id: searchParams.get("campaign_id"),
+    });
+    const identity = user?.id ?? "guest";
+    enforceRateLimit(buildRateLimitKey("lookalike-discovery", `${orgId}:${identity}`), {
+      windowMs: 60_000,
+      maxRequests: 20,
+    });
+    await assertCampaignOwnedByOrg(supabase, campaign_id, orgId);
+    await assertCreatorOwnedByOrg(supabase, creator_id, orgId);
 
     // Fetch seed creator
     const { data: seedCreator, error: seedError } = await supabase
       .from("creators")
       .select("*")
       .eq("id", creator_id)
+      .eq("org_id", orgId)
       .single();
 
-    if (seedError || !seedCreator) {
-      return NextResponse.json({ error: "Creator not found" }, { status: 404 });
-    }
+    if (seedError || !seedCreator) return NextResponse.json({ error: "Creator not found" }, { status: 404 });
 
     // Fetch seed creator metrics
     const { data: seedMetrics, error: seedMetricsError } = await supabase
@@ -45,18 +58,18 @@ export async function GET(req: NextRequest) {
       .neq("creator_id", creator_id);
 
     if (campaignError) {
-      return NextResponse.json({ error: campaignError.message }, { status: 500 });
+      throw campaignError;
     }
 
     if (!campaignCreators || campaignCreators.length === 0) {
-      return NextResponse.json({
+      return apiSuccess({
         seed_creator: {
           id: seedCreator.id,
           username: seedCreator.tiktok_username,
         },
         similar_creators: [],
         discovery_insights: ["No other creators in this campaign to compare against"],
-      });
+      }, 200, requestId);
     }
 
     // Calculate similarity scores for all candidates
@@ -108,17 +121,16 @@ export async function GET(req: NextRequest) {
     // Generate insights
     const insights = generateDiscoveryInsights(topMatches, seedCreator);
 
-    return NextResponse.json({
+    return apiSuccess({
       seed_creator: {
         id: seedCreator.id,
         username: seedCreator.tiktok_username,
       },
       similar_creators: topMatches,
       discovery_insights: insights,
-    });
-  } catch (error: any) {
-    console.error("Lookalike discovery API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Lookalike discovery API error");
   }
 }
 

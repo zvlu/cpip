@@ -1,8 +1,8 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { requireApiContext } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
+import { assertCampaignOwnedByOrg, assertDemoModeWritable, assertElevatedRole } from "@/lib/api/authorization";
+import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
 
 const CreatorSchema = z.object({
   tiktok_username: z.string().min(1).max(50),
@@ -12,13 +12,36 @@ const CreatorSchema = z.object({
   campaign_id: z.string().uuid().optional(),
 });
 
+const CreatorQuerySchema = z.object({
+  campaign_id: z.string().uuid().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+const CreatorPatchSchema = z.object({
+  id: z.string().uuid(),
+  display_name: z.string().max(255).optional(),
+  category: z.string().max(255).optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["active", "inactive", "blacklisted"]).optional(),
+  notes: z.string().max(2000).optional(),
+  avatar_url: z.string().url().optional(),
+  bio: z.string().max(3000).optional(),
+});
+
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId } = auth;
     const { searchParams } = new URL(req.url);
-    const campaign_id = searchParams.get("campaign_id");
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "25");
+    const parsedQuery = CreatorQuerySchema.parse({
+      campaign_id: searchParams.get("campaign_id") || undefined,
+      page: searchParams.get("page") || undefined,
+      limit: searchParams.get("limit") || undefined,
+    });
+    const { campaign_id, page, limit } = parsedQuery;
 
     let query = supabase
       .from("creators")
@@ -26,7 +49,7 @@ export async function GET(req: NextRequest) {
         `*, latest_score:performance_scores(overall_score, tier, engagement_score, revenue_score, consistency_score, score_date), post_count:posts(count), campaign_creators(campaign_id)`,
         { count: "exact" }
       )
-      .eq("org_id", DEMO_ORG_ID)
+      .eq("org_id", orgId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
@@ -34,54 +57,66 @@ export async function GET(req: NextRequest) {
     if (campaign_id) query = query.eq("campaign_creators.campaign_id", campaign_id);
 
     const { data, error, count } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data, total: count, page, limit });
-  } catch (error: any) {
-    console.error("Creators API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+    return apiSuccess({ data, total: count, page, limit }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Creators GET error");
   }
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId, role, isDemoMode } = auth;
+    assertElevatedRole(role);
+    assertDemoModeWritable(isDemoMode);
     const body = await req.json();
     const parsed = CreatorSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+    if (parsed.data.campaign_id) {
+      await assertCampaignOwnedByOrg(supabase, parsed.data.campaign_id, orgId);
+    }
+
     const { data, error } = await supabase
       .from("creators")
-      .insert({ ...parsed.data, org_id: DEMO_ORG_ID })
+      .insert({ ...parsed.data, org_id: orgId })
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
 
     if (parsed.data.campaign_id) {
       await supabase.from("campaign_creators").insert({ campaign_id: parsed.data.campaign_id, creator_id: data.id });
     }
-    return NextResponse.json({ data }, { status: 201 });
-  } catch (error: any) {
-    console.error("Creators POST error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiSuccess({ data }, 201, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Creators POST error");
   }
 }
 
 export async function PATCH(req: NextRequest) {
+  const requestId = getRequestId();
   try {
-    const supabase = createServerClient();
-    const { id, ...updates } = await req.json();
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    const auth = await requireApiContext();
+    if (!auth.ok) return auth.response;
+    const { supabase, orgId, role, isDemoMode } = auth;
+    assertElevatedRole(role);
+    assertDemoModeWritable(isDemoMode);
+    const body = await req.json();
+    const { id, ...updates } = CreatorPatchSchema.parse(body);
 
     const { data, error } = await supabase
       .from("creators")
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq("id", id)
+      .eq("org_id", orgId)
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data });
-  } catch (error: any) {
-    console.error("Creators PATCH error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) throw error;
+    return apiSuccess({ data }, 200, requestId);
+  } catch (error) {
+    return handleApiError(error, requestId, "Creators PATCH error");
   }
 }
