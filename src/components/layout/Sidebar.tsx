@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { CampaignSelector } from "@/components/campaigns/CampaignSelector";
 
 const nav = [
@@ -11,13 +12,21 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 p-6 flex flex-col shadow-sm">
       {/* Logo Section */}
-      <div className="mb-8">
-        <div className="inline-flex items-center gap-2 mb-2">
-          <div className="text-2xl font-bold text-blue-600">⚡</div>
-          <div className="text-xl font-bold text-gray-900">CPIP</div>
+      <Link href="/" className="mb-8 block hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-2">
+          <Image
+            src="/logo.png"
+            alt="CreatorPulse Logo"
+            width={40}
+            height={40}
+            className="w-10 h-10"
+          />
+          <div className="flex flex-col">
+            <div className="text-sm font-bold text-gray-900">CreatorPulse</div>
+            <p className="text-xs text-gray-500 font-medium">Intelligence Platform</p>
+          </div>
         </div>
-        <p className="text-xs text-gray-500 font-medium">Creator Performance Intelligence</p>
-      </div>
+      </Link>
 
       {/* Campaign Selector Section */}
       <div className="mb-8 pb-6 border-b border-gray-200">
