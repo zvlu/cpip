@@ -13,18 +13,15 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 p-6 flex flex-col shadow-sm">
       {/* Logo Section */}
       <Link href="/" className="mb-8 block hover:opacity-80 transition-opacity">
-        <div className="flex items-center gap-2">
+        <div className="w-full">
           <Image
             src="/logo.png"
             alt="CreatorPulse Logo"
-            width={40}
-            height={40}
-            className="w-10 h-10"
+            width={680}
+            height={300}
+            priority
+            className="h-auto w-full"
           />
-          <div className="flex flex-col">
-            <div className="text-sm font-bold text-gray-900">CreatorPulse</div>
-            <p className="text-xs text-gray-500 font-medium">Intelligence Platform</p>
-          </div>
         </div>
       </Link>
 
