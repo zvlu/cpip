@@ -25,9 +25,18 @@ export async function PATCH(req: NextRequest) {
   try {
     const supabase = createServerClient();
     const { id, read } = await req.json();
-    const { error } = await supabase.from("alerts").update({ read }).eq("id", id);
+    
+    if (!id) {
+      return NextResponse.json({ error: "Alert ID is required" }, { status: 400 });
+    }
+    
+    if (typeof read !== "boolean") {
+      return NextResponse.json({ error: "Read must be a boolean" }, { status: 400 });
+    }
+    
+    const { data, error } = await supabase.from("alerts").update({ read }).eq("id", id).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error("Alerts PATCH error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

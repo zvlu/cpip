@@ -10,6 +10,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const campaign_id = searchParams.get("campaign_id") || DEMO_CAMPAIGN_ID;
 
+    if (!campaign_id) {
+      return NextResponse.json({ error: "Campaign ID is required" }, { status: 400 });
+    }
+
     const org_id = DEMO_ORG_ID;
     const today = new Date().toISOString().split("T")[0];
 
@@ -33,6 +37,12 @@ export async function GET(req: NextRequest) {
       supabase.from("alerts").select("*").eq("org_id", org_id).eq("read", false).order("created_at", { ascending: false }).limit(10),
       supabase.from("performance_scores").select("tier").eq("campaign_id", campaign_id).eq("score_date", today),
     ]);
+
+    // Log any errors for debugging
+    const errors = [creatorsRes.error, topRes.error, postsRes.error, revRes.error, alertsRes.error, tierRes.error].filter(Boolean);
+    if (errors.length > 0) {
+      console.warn("Dashboard query warnings:", errors);
+    }
 
     const totalRevenue = revRes.data?.reduce((s, r) => s + Number(r.estimated_revenue), 0) || 0;
     const tierDist = (tierRes.data || []).reduce(

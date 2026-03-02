@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
 interface Campaign {
   id: string;
@@ -30,24 +30,35 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshCampaigns = async () => {
+  const refreshCampaigns = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/campaigns");
-      if (!res.ok) throw new Error("Failed to fetch campaigns");
-      const { data } = await res.json();
-      setCampaigns(data || []);
+      setError(null);
+      const res = await fetch("/api/campaigns", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch campaigns: ${res.statusText}`);
+      }
+
+      const json = await res.json();
+      const data = json.data || [];
+      setCampaigns(data);
 
       // Auto-select first campaign if none selected
       if (!selectedCampaign && data && data.length > 0) {
         setSelectedCampaign(data[0]);
       }
     } catch (err: any) {
-      setError(err.message);
+      const errorMessage = err.message || "Failed to load campaigns";
+      setError(errorMessage);
+      console.error("Campaign context error:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCampaign]);
 
   useEffect(() => {
     refreshCampaigns();

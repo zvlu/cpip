@@ -22,6 +22,7 @@ type FilterType = "all" | "unread" | "critical";
 export function AlertsList() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
 
   useEffect(() => {
@@ -31,11 +32,16 @@ export function AlertsList() {
   const fetchAlerts = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await fetch("/api/alerts");
-      if (!res.ok) throw new Error("Failed to fetch alerts");
-      const { data } = await res.json();
-      setAlerts(data || []);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch alerts: ${res.statusText}`);
+      }
+      const json = await res.json();
+      setAlerts(json.data || []);
     } catch (err: any) {
+      const errorMessage = err.message || "Failed to load alerts";
+      setError(errorMessage);
       console.error("Failed to fetch alerts:", err);
     } finally {
       setLoading(false);
@@ -50,17 +56,22 @@ export function AlertsList() {
         body: JSON.stringify({ id: alertId, read: true }),
       });
 
-      if (res.ok) {
-        setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, read: true } : a)));
+      if (!res.ok) {
+        throw new Error(`Failed to update alert: ${res.statusText}`);
       }
+
+      setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, read: true } : a)));
     } catch (err: any) {
       console.error("Failed to mark alert as read:", err);
+      alert(`Error: ${err.message}`);
     }
   };
 
   const handleMarkAllAsRead = async () => {
     try {
       const unreadAlerts = filteredAlerts.filter((a) => !a.read);
+      if (unreadAlerts.length === 0) return;
+
       await Promise.all(unreadAlerts.map((a) => handleMarkAsRead(a.id)));
     } catch (err: any) {
       console.error("Failed to mark all as read:", err);
@@ -79,6 +90,27 @@ export function AlertsList() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-400">Loading alerts...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900">Alerts</h1>
+          <p className="text-gray-600 mt-2">Manage and track notifications</p>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-700 font-medium">Failed to load alerts</p>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+          <button
+            onClick={fetchAlerts}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
