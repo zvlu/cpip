@@ -7,6 +7,7 @@ interface InfoCardProps {
   description: string;
   type?: "info" | "tip" | "warning" | "success";
   dismissible?: boolean;
+  persistKey?: string;
   action?: {
     label: string;
     onClick: () => void;
@@ -33,9 +34,21 @@ export function InfoCard({
   description,
   type = "info",
   dismissible = false,
+  persistKey,
   action,
 }: InfoCardProps) {
-  const [dismissed, setDismissed] = useState(false);
+  const storageKey = persistKey ? `cpip_info_card_dismissed:${persistKey}` : null;
+  const [dismissed, setDismissed] = useState(() => {
+    if (!storageKey || typeof window === "undefined") return false;
+    return window.localStorage.getItem(storageKey) === "1";
+  });
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    if (storageKey && typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, "1");
+    }
+  };
 
   if (dismissed) return null;
 
@@ -59,7 +72,7 @@ export function InfoCard({
         </div>
         {dismissible && (
           <button
-            onClick={() => setDismissed(true)}
+            onClick={handleDismiss}
             className="text-lg opacity-50 hover:opacity-100 transition-opacity flex-shrink-0"
           >
             ×

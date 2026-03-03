@@ -204,6 +204,7 @@ export default function Home() {
             title="Predictive ROI Score"
             description="Each creator now has a conversion probability and viral potential score. Use these to prioritize spend."
             dismissible
+            persistKey="dashboard-predictive-roi-score"
           />
           <InfoCard
             icon="AUD"
@@ -211,6 +212,7 @@ export default function Home() {
             title="Creative Audit"
             description="View each creator's top-performing content styles. Send targeted briefs based on what works."
             dismissible
+            persistKey="dashboard-creative-audit"
           />
         </div>
       )}
