@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { HelpHint } from "@/components/ui/HelpHint";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -108,9 +109,13 @@ export default function ResetPasswordPage() {
           <p className="text-sm text-gray-600">Verifying reset link...</p>
         ) : hasRecoverySession ? (
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-gray-900">New password</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="reset-password" className="text-sm font-medium text-gray-900">New password</label>
+                <HelpHint text="Use at least 8 characters. Longer is safer." />
+              </div>
               <input
+                id="reset-password"
                 type="password"
                 required
                 minLength={8}
@@ -119,11 +124,15 @@ export default function ResetPasswordPage() {
                 placeholder="At least 8 characters"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
-            </label>
+            </div>
 
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-gray-900">Confirm new password</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="confirm-reset-password" className="text-sm font-medium text-gray-900">Confirm new password</label>
+                <HelpHint text="Re-enter your new password to confirm." />
+              </div>
               <input
+                id="confirm-reset-password"
                 type="password"
                 required
                 minLength={8}
@@ -132,7 +141,7 @@ export default function ResetPasswordPage() {
                 placeholder="Re-enter your new password"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
-            </label>
+            </div>
 
             <button
               type="submit"

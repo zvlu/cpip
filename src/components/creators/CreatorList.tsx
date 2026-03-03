@@ -8,7 +8,15 @@ import { useAuthUser } from "@/lib/hooks/useAuthUser";
 
 const TIER_COLORS: Record<string, string> = { S: "bg-emerald-500", A: "bg-blue-500", B: "bg-amber-500", C: "bg-orange-500", D: "bg-red-500" };
 
-export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onSelect?: (id: string) => void }) {
+export function CreatorList({
+  campaignId,
+  onSelect,
+  onAddCreator,
+}: {
+  campaignId?: string;
+  onSelect?: (id: string) => void;
+  onAddCreator?: () => void;
+}) {
   const [creators, setCreators] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -60,7 +68,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
   if (error) {
     if (!user) {
       return (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-6 shadow-sm">
           <p className="text-yellow-900 font-medium">Sign in to load creators</p>
           <p className="text-yellow-800 text-sm mt-1">
             You are currently signed out, so creator data may be unavailable.
@@ -68,7 +76,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
           <div className="mt-4">
             <Link
               href="/auth"
-              className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="btn-primary inline-flex items-center text-sm"
             >
               Go to sign in
             </Link>
@@ -78,7 +86,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
     }
 
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
         <p className="text-red-800 font-medium">Failed to load creators</p>
         <p className="text-red-700 text-sm mt-1">{error}</p>
       </div>
@@ -86,7 +94,13 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
   }
 
   if (creators.length === 0) {
-    return <EmptyState icon="👥" title="No creators yet" description="Add your first creator to get started" />;
+    return (
+      <EmptyState
+        title="No creators yet"
+        description="Add your first creator to get started"
+        action={onAddCreator ? { label: "Add Creator", onClick: onAddCreator } : undefined}
+      />
+    );
   }
 
   return (
@@ -97,24 +111,24 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
           placeholder="Search creators by username..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full sm:max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all"
+          className="input-base w-full sm:max-w-md text-gray-900 placeholder-gray-500"
         />
       </div>
 
       {/* Creators Table */}
       {filtered.length === 0 ? (
-        <EmptyState icon="🔍" title="No results found" description={`No creators match "${search}"`} />
+        <EmptyState title="No results found" description={`No creators match "${search}"`} />
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
           <table className="w-full min-w-[680px]">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Creator</th>
-                <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Tier</th>
-                <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Score</th>
-                <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Followers</th>
-                <th className="text-left py-4 px-6 font-semibold text-gray-900 text-sm">Engagement</th>
+              <tr className="border-b border-gray-200 bg-gray-50/80">
+                <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Creator</th>
+                <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Tier</th>
+                <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Score</th>
+                <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Followers</th>
+                <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Engagement</th>
               </tr>
             </thead>
             <tbody>
@@ -137,7 +151,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
                     tabIndex={onSelect ? 0 : undefined}
                     role={onSelect ? "button" : undefined}
                     aria-label={onSelect ? `Open details for @${creator.tiktok_username}` : undefined}
-                    className={`border-b border-gray-100 transition-colors ${onSelect ? "hover:bg-gray-50 cursor-pointer" : ""}`}
+                    className={`border-b border-gray-100 transition-colors ${onSelect ? "cursor-pointer hover:bg-gray-50/70" : ""}`}
                   >
                     <td className="py-4 px-6">
                       <div className="font-medium text-gray-900">@{creator.tiktok_username}</div>
@@ -145,7 +159,7 @@ export function CreatorList({ campaignId, onSelect }: { campaignId?: string; onS
                     </td>
                     <td className="py-4 px-6">
                       {latestScore?.tier ? (
-                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold text-white text-sm ${TIER_COLORS[latestScore.tier]}`}>
+                        <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white ${TIER_COLORS[latestScore.tier]}`}>
                           {latestScore.tier}
                         </span>
                       ) : (

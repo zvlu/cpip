@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertCampaignOwnedByOrg } from "@/lib/api/authorization";
 import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
+import { buildActionRecommendations, buildWeeklyBrief } from "@/lib/dashboardInsights";
+
+export const dynamic = "force-dynamic";
 
 const DashboardQuerySchema = z.object({
   campaign_id: z.union([z.string().uuid(), z.literal("default")]).optional(),
@@ -36,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     const today = new Date().toISOString().split("T")[0];
 
-    const [creatorsRes, topRes, postsRes, revRes, alertsRes, tierRes] = await Promise.all([
+    const [creatorsRes, topRes, bottomRes, postsRes, revRes, alertsRes, tierRes, tasksRes] = await Promise.all([
       supabase.from("creators").select("id", { count: "exact" }).eq("org_id", orgId).eq("status", "active"),
       supabase
         .from("performance_scores")
@@ -44,6 +47,13 @@ export async function GET(req: NextRequest) {
         .eq("campaign_id", campaign_id || "")
         .eq("score_date", today)
         .order("overall_score", { ascending: false })
+        .limit(10),
+      supabase
+        .from("performance_scores")
+        .select("*, creators(tiktok_username, display_name, avatar_url)")
+        .eq("campaign_id", campaign_id || "")
+        .eq("score_date", today)
+        .order("overall_score", { ascending: true })
         .limit(10),
       supabase
         .from("posts")
@@ -55,10 +65,17 @@ export async function GET(req: NextRequest) {
       supabase.from("revenue_estimates").select("estimated_revenue").eq("campaign_id", campaign_id || ""),
       supabase.from("alerts").select("*").eq("org_id", orgId).eq("read", false).order("created_at", { ascending: false }).limit(10),
       supabase.from("performance_scores").select("tier").eq("campaign_id", campaign_id || "").eq("score_date", today),
+      supabase
+        .from("recommendation_tasks")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("campaign_id", campaign_id || "")
+        .order("created_at", { ascending: false })
+        .limit(20),
     ]);
 
     // Log any errors for debugging
-    const errors = [creatorsRes.error, topRes.error, postsRes.error, revRes.error, alertsRes.error, tierRes.error].filter(Boolean);
+    const errors = [creatorsRes.error, topRes.error, bottomRes.error, postsRes.error, revRes.error, alertsRes.error, tierRes.error, tasksRes.error].filter(Boolean);
     if (errors.length > 0) {
       console.warn("Dashboard query warnings:", errors);
     }
@@ -71,14 +88,34 @@ export async function GET(req: NextRequest) {
       },
       {}
     );
+    const topPerformers = topRes.data || [];
+    const bottomPerformers = bottomRes.data || [];
+    const unreadAlerts = alertsRes.data || [];
+
+    const actionRecommendations = buildActionRecommendations({
+      topPerformers,
+      bottomPerformers,
+      unreadAlerts,
+    });
+    const weeklyBrief = buildWeeklyBrief({
+      totalCreators: creatorsRes.count || 0,
+      totalEstimatedRevenue: totalRevenue,
+      unreadAlerts,
+      topPerformers,
+      bottomPerformers,
+    });
 
     return apiSuccess({
       total_creators: creatorsRes.count || 0,
       total_estimated_revenue: totalRevenue,
-      top_performers: topRes.data || [],
+      top_performers: topPerformers,
+      bottom_performers: bottomPerformers,
       recent_top_posts: postsRes.data || [],
-      unread_alerts: alertsRes.data || [],
+      unread_alerts: unreadAlerts,
       tier_distribution: tierDist,
+      action_recommendations: actionRecommendations,
+      weekly_brief: weeklyBrief,
+      recommendation_tasks: tasksRes.data || [],
     }, 200, requestId);
   } catch (error) {
     return handleApiError(error, requestId, "Dashboard API error");

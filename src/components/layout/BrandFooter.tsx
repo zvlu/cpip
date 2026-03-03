@@ -22,9 +22,9 @@ export function BrandFooter() {
   }, []);
 
   return (
-    <footer className="mt-6 rounded-lg border border-gray-200 bg-white px-4 py-3">
-      <div className="flex flex-col items-start justify-between gap-3 text-sm text-gray-600 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-2">
+    <footer className="mt-8 py-4">
+      <div className="surface-panel flex flex-col items-center justify-center gap-2 px-4 py-4 text-center text-sm text-gray-600">
+        <div className="flex items-center justify-center gap-2">
           <Image
             src={logoUrl}
             alt={`${companyName} logo`}

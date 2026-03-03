@@ -109,7 +109,7 @@ export function CreatorDetail({ creatorId, campaignId }: { creatorId: string; ca
       const res = await apiFetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creator_id: creatorId, campaign_id: campaignId }),
+        body: JSON.stringify({ creator_id: creatorId, campaign_id: campaignId, wait_for_completion: true }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -161,10 +161,10 @@ export function CreatorDetail({ creatorId, campaignId }: { creatorId: string; ca
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 lg:p-8 shadow-sm">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 lg:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">@{creator.tiktok_username}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">@{creator.tiktok_username}</h1>
             {creator.display_name && <p className="text-base sm:text-lg text-gray-600 mt-1">{creator.display_name}</p>}
             <div className="flex gap-3 mt-4 flex-wrap">
               {ls && (
@@ -310,7 +310,7 @@ export function CreatorDetail({ creatorId, campaignId }: { creatorId: string; ca
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-900 line-clamp-2">{p.caption || "No caption"}</p>
                       <div className="flex gap-2 mt-2 flex-wrap">
-                        {p.has_product_link && <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">🛒 Product Link</span>}
+                        {p.has_product_link && <span className="rounded bg-green-100 px-2 py-1 text-xs text-green-700">Product Link</span>}
                         {p.hashtags?.length > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{p.hashtags.length} hashtags</span>}
                       </div>
                     </div>

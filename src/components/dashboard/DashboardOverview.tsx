@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -41,9 +42,35 @@ type DashboardData = {
   total_creators: number;
   total_estimated_revenue: number;
   top_performers: TopPerformer[];
+  bottom_performers: TopPerformer[];
   recent_top_posts: RecentTopPost[];
   unread_alerts: Array<{ id: string }>;
   tier_distribution: Record<string, number>;
+  action_recommendations: Array<{
+    id: string;
+    action: "scale" | "watch" | "pause" | "investigate";
+    priority: "high" | "medium" | "low";
+    title: string;
+    reason: string;
+  }>;
+  weekly_brief?: {
+    generated_at: string;
+    highlights: string[];
+    risks: string[];
+    next_steps: string[];
+  };
+  recommendation_tasks: Array<{
+    id: string;
+    recommendation_id: string;
+    title: string;
+    action: "scale" | "watch" | "pause" | "investigate";
+    priority: "high" | "medium" | "low";
+    status: "open" | "in_progress" | "done" | "dismissed";
+    owner?: string | null;
+    notes?: string | null;
+    due_date?: string | null;
+    created_at: string;
+  }>;
 };
 
 type TopChartType = "bar" | "line";
@@ -51,6 +78,7 @@ type TierChartType = "pie" | "bar";
 type ExportAction = "workbook" | "summary" | "tiers" | "performers" | "posts";
 
 export function DashboardOverview({ campaignId }: { campaignId: string }) {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +87,7 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [taskMutatingId, setTaskMutatingId] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,7 +160,13 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
   }
 
   if (!data) {
-    return <EmptyState icon="📊" title="No data available" description="Start by adding creators to your campaign" />;
+    return (
+      <EmptyState
+        title="No data available"
+        description="Start by adding creators to your campaign"
+        action={{ label: "Add Creator", onClick: () => router.push("/creators") }}
+      />
+    );
   }
 
   const tierData = Object.entries(data.tier_distribution || {})
@@ -163,6 +198,9 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
   }));
 
   const tierRows = tierData.map((entry) => ({ tier: entry.tier, count: entry.count }));
+  const activeTasks = (data.recommendation_tasks || []).filter(
+    (task) => task.status === "open" || task.status === "in_progress"
+  );
 
   const handleExportData = async (action: ExportAction) => {
     if (!data) return;
@@ -200,19 +238,393 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
     }
   };
 
+  const createTaskFromRecommendation = async (recommendation: DashboardData["action_recommendations"][number]) => {
+    if (!data) return;
+    setTaskMutatingId(recommendation.id);
+    try {
+      const res = await apiFetch("/api/recommendation-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_id: campaignId,
+          recommendation_id: recommendation.id,
+          action: recommendation.action,
+          priority: recommendation.priority,
+          title: recommendation.title,
+          reason: recommendation.reason,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create task");
+      const json = await res.json();
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              recommendation_tasks: [json.data, ...(prev.recommendation_tasks || [])],
+            }
+          : prev
+      );
+    } finally {
+      setTaskMutatingId(null);
+    }
+  };
+
+  const updateTaskStatus = async (
+    taskId: string,
+    status: "open" | "in_progress" | "done" | "dismissed"
+  ) => {
+    setTaskMutatingId(taskId);
+    try {
+      const res = await apiFetch(`/api/recommendation-tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Failed to update task");
+      const json = await res.json();
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              recommendation_tasks: prev.recommendation_tasks.map((task) =>
+                task.id === taskId ? json.data : task
+              ),
+            }
+          : prev
+      );
+    } finally {
+      setTaskMutatingId(null);
+    }
+  };
+
+  const updateTaskFields = async (
+    taskId: string,
+    updates: Partial<{
+      owner: string | null;
+      due_date: string | null;
+      notes: string | null;
+    }>
+  ) => {
+    setTaskMutatingId(taskId);
+    try {
+      const res = await apiFetch(`/api/recommendation-tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Failed to update task");
+      const json = await res.json();
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              recommendation_tasks: prev.recommendation_tasks.map((task) =>
+                task.id === taskId ? json.data : task
+              ),
+            }
+          : prev
+      );
+    } finally {
+      setTaskMutatingId(null);
+    }
+  };
+
+  const downloadWeeklyBrief = () => {
+    if (!data?.weekly_brief) return;
+    const reportDate = new Date(data.weekly_brief.generated_at).toISOString().slice(0, 10);
+    const lines = [
+      "# Weekly Campaign Brief",
+      "",
+      `Generated: ${new Date(data.weekly_brief.generated_at).toLocaleString()}`,
+      "",
+      "## Highlights",
+      ...data.weekly_brief.highlights.map((item) => `- ${item}`),
+      "",
+      "## Risks",
+      ...data.weekly_brief.risks.map((item) => `- ${item}`),
+      "",
+      "## Next Steps",
+      ...data.weekly_brief.next_steps.map((item) => `- ${item}`),
+      "",
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `weekly_brief_${campaignId}_${reportDate}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
+      {/* Action Center */}
+      {data.action_recommendations && data.action_recommendations.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-gray-900">Action Center</h3>
+            <p className="text-sm text-gray-500 mt-1">Recommended actions based on current campaign signals</p>
+          </div>
+          <div className="card-body grid grid-cols-1 gap-3 md:grid-cols-2">
+            {data.action_recommendations.map((recommendation) => (
+              <div key={recommendation.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-gray-900">
+                    {actionLabel(recommendation.action)}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityClass(recommendation.priority)}`}>
+                    {recommendation.priority}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-medium text-gray-800">{recommendation.title}</p>
+                <p className="mt-1 text-sm text-gray-600">{recommendation.reason}</p>
+                {(() => {
+                  const task = (data.recommendation_tasks || []).find(
+                    (entry) => entry.recommendation_id === recommendation.id
+                  );
+                  if (!task) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => createTaskFromRecommendation(recommendation)}
+                        disabled={taskMutatingId === recommendation.id}
+                        className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                      >
+                        {taskMutatingId === recommendation.id ? "Creating..." : "Create Task"}
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${taskStatusClass(task.status)}`}>
+                          {task.status.replace("_", " ")}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {task.status !== "in_progress" && task.status !== "done" && (
+                            <button
+                              type="button"
+                              onClick={() => updateTaskStatus(task.id, "in_progress")}
+                              disabled={taskMutatingId === task.id}
+                              className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                            >
+                              Start
+                            </button>
+                          )}
+                          {task.status !== "done" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => updateTaskStatus(task.id, "done")}
+                                disabled={taskMutatingId === task.id}
+                                className="text-xs font-medium text-green-700 hover:text-green-900"
+                              >
+                                Mark Done
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const owner = window.prompt("Assign owner (name/email):", task.owner || "");
+                                  if (owner === null) return;
+                                  void updateTaskFields(task.id, { owner: owner.trim() || null });
+                                }}
+                                disabled={taskMutatingId === task.id}
+                                className="text-xs font-medium text-gray-700 hover:text-gray-900"
+                              >
+                                Assign
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const dueDate = window.prompt("Set due date (YYYY-MM-DD):", task.due_date || "");
+                                  if (dueDate === null) return;
+                                  const trimmed = dueDate.trim();
+                                  if (trimmed.length > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+                                    return;
+                                  }
+                                  void updateTaskFields(task.id, { due_date: trimmed || null });
+                                }}
+                                disabled={taskMutatingId === task.id}
+                                className="text-xs font-medium text-gray-700 hover:text-gray-900"
+                              >
+                                Due
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {(task.owner || task.due_date) && (
+                        <p className="mt-2 text-xs text-gray-600">
+                          {task.owner ? `Owner: ${task.owner}` : "Owner: unassigned"}
+                          {task.due_date ? ` | Due: ${task.due_date}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Brief */}
+      {data.weekly_brief && (
+        <div className="card">
+          <div className="card-header">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Weekly Brief</h3>
+                <p className="text-sm text-gray-500 mt-1">Executive snapshot for this campaign</p>
+              </div>
+              <button
+                type="button"
+                onClick={downloadWeeklyBrief}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Export Brief
+              </button>
+            </div>
+          </div>
+          <div className="card-body grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Highlights</p>
+              <ul className="mt-2 space-y-2 text-sm text-gray-700">
+                {data.weekly_brief.highlights.map((item, index) => (
+                  <li key={`highlight-${index}`}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Risks</p>
+              <ul className="mt-2 space-y-2 text-sm text-gray-700">
+                {data.weekly_brief.risks.map((item, index) => (
+                  <li key={`risk-${index}`}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Next Steps</p>
+              <ul className="mt-2 space-y-2 text-sm text-gray-700">
+                {data.weekly_brief.next_steps.map((item, index) => (
+                  <li key={`step-${index}`}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Workflow Tasks */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="text-lg font-semibold text-gray-900">Recommendation Tasks</h3>
+          <p className="text-sm text-gray-500 mt-1">Track execution of recommended actions</p>
+        </div>
+        <div className="card-body">
+          {activeTasks.length > 0 ? (
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/80">
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Task</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Priority</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Status</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Owner / Due</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTasks.slice(0, 8).map((task) => (
+                    <tr key={task.id} className="border-b border-gray-100 transition-colors hover:bg-gray-50/70">
+                      <td className="px-4 py-3 font-medium text-gray-900">{task.title}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityClass(task.priority)}`}>
+                          {task.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${taskStatusClass(task.status)}`}>
+                          {task.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-700">
+                        <div>{task.owner || "Unassigned"}</div>
+                        <div className="text-gray-500">{task.due_date || "No due date"}</div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {task.status !== "in_progress" && (
+                          <button
+                            type="button"
+                            onClick={() => updateTaskStatus(task.id, "in_progress")}
+                            disabled={taskMutatingId === task.id}
+                            className="mr-2 rounded-md border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-60"
+                          >
+                            Start
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const owner = window.prompt("Assign owner (name/email):", task.owner || "");
+                            if (owner === null) return;
+                            void updateTaskFields(task.id, { owner: owner.trim() || null });
+                          }}
+                          disabled={taskMutatingId === task.id}
+                          className="mr-2 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          Assign
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const dueDate = window.prompt("Set due date (YYYY-MM-DD):", task.due_date || "");
+                            if (dueDate === null) return;
+                            const trimmed = dueDate.trim();
+                            if (trimmed.length > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+                              return;
+                            }
+                            void updateTaskFields(task.id, { due_date: trimmed || null });
+                          }}
+                          disabled={taskMutatingId === task.id}
+                          className="mr-2 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          Due
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateTaskStatus(task.id, "done")}
+                          disabled={taskMutatingId === task.id}
+                          className="rounded-md border border-green-200 px-2 py-1 text-xs font-medium text-green-700 transition-colors hover:bg-green-50 disabled:opacity-60"
+                        >
+                          Done
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No active tasks" description="Create tasks from the Action Center to track execution." />
+          )}
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Active Creators" value={data.total_creators} subtitle="Total in system" icon="👥" />
+        <KPICard title="Active Creators" value={data.total_creators} subtitle="Total in system" glyph="CR" />
         <KPICard
           title="Est. Revenue"
           value={`$${(data.total_estimated_revenue || 0).toLocaleString()}`}
           subtitle="Last 7 days"
-          icon="💰"
+          glyph="RV"
         />
-        <KPICard title="Top Posts" value={data.recent_top_posts?.length || 0} subtitle="Recent activity" icon="🔥" />
-        <KPICard title="Alerts" value={data.unread_alerts?.length || 0} subtitle="Unread notifications" icon="🔔" />
+        <KPICard title="Top Posts" value={data.recent_top_posts?.length || 0} subtitle="Recent activity" glyph="TP" />
+        <KPICard title="Alerts" value={data.unread_alerts?.length || 0} subtitle="Unread notifications" glyph="AL" />
       </div>
 
       {/* Charts */}
@@ -265,7 +677,11 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
                 )}
               </ResponsiveContainer>
             ) : (
-              <EmptyState icon="📈" title="No data yet" description="Scores will appear once creators are added" />
+              <EmptyState
+                title="No data yet"
+                description="Scores will appear once creators are added"
+                action={{ label: "Add Creator", onClick: () => router.push("/creators") }}
+              />
             )}
           </div>
         </div>
@@ -324,7 +740,11 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
                 )}
               </ResponsiveContainer>
             ) : (
-              <EmptyState icon="📊" title="No tiers assigned" description="Tiers will appear once scores are calculated" />
+              <EmptyState
+                title="No tiers assigned"
+                description="Tiers will appear once scores are calculated"
+                action={{ label: "Add Creator", onClick: () => router.push("/creators") }}
+              />
             )}
           </div>
         </div>
@@ -375,30 +795,34 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
         <div className="card-body">
           {exportError && <p className="text-sm text-red-700 mb-3">{exportError}</p>}
           {data.recent_top_posts && data.recent_top_posts.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-900">Creator</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-900">Views</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-900">Engagement</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-900">Posted</th>
+                  <tr className="border-b border-gray-200 bg-gray-50/80">
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Creator</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Views</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Engagement</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">Posted</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.recent_top_posts.slice(0, 10).map((post) => (
-                    <tr key={post.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-gray-900 font-medium">{post.creators?.tiktok_username || "Unknown"}</td>
-                      <td className="py-3 px-4 text-gray-700">{(post.views || 0).toLocaleString()}</td>
-                      <td className="py-3 px-4 text-gray-700">{(post.likes || 0).toLocaleString()} likes</td>
-                      <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(new Date(post.posted_at))}</td>
+                    <tr key={post.id} className="border-b border-gray-100 transition-colors hover:bg-gray-50/70">
+                      <td className="px-4 py-3 font-medium text-gray-900">{post.creators?.tiktok_username || "Unknown"}</td>
+                      <td className="px-4 py-3 text-gray-700">{(post.views || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-gray-700">{(post.likes || 0).toLocaleString()} likes</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{formatDate(new Date(post.posted_at))}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <EmptyState icon="📱" title="No posts yet" description="Posts will appear once creators are scraped" />
+            <EmptyState
+              title="No posts yet"
+              description="Posts will appear once creators are scraped"
+              action={{ label: "Add Creator", onClick: () => router.push("/creators") }}
+            />
           )}
         </div>
       </div>
@@ -406,7 +830,17 @@ export function DashboardOverview({ campaignId }: { campaignId: string }) {
   );
 }
 
-function KPICard({ title, value, subtitle, icon }: { title: string; value: any; subtitle: string; icon: string }) {
+function KPICard({
+  title,
+  value,
+  subtitle,
+  glyph,
+}: {
+  title: string;
+  value: any;
+  subtitle: string;
+  glyph: string;
+}) {
   return (
     <div className="card">
       <div className="card-body">
@@ -416,7 +850,9 @@ function KPICard({ title, value, subtitle, icon }: { title: string; value: any; 
             <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-2">{value}</p>
             <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
           </div>
-          <div className="text-3xl">{icon}</div>
+          <div className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold tracking-wide text-gray-600">
+            {glyph}
+          </div>
         </div>
       </div>
     </div>
@@ -463,4 +899,24 @@ function formatDate(date: Date): string {
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function actionLabel(action: "scale" | "watch" | "pause" | "investigate"): string {
+  if (action === "scale") return "Scale";
+  if (action === "watch") return "Watch";
+  if (action === "pause") return "Pause";
+  return "Investigate";
+}
+
+function priorityClass(priority: "high" | "medium" | "low"): string {
+  if (priority === "high") return "bg-red-100 text-red-700";
+  if (priority === "medium") return "bg-amber-100 text-amber-700";
+  return "bg-gray-100 text-gray-700";
+}
+
+function taskStatusClass(status: "open" | "in_progress" | "done" | "dismissed"): string {
+  if (status === "done") return "bg-green-100 text-green-700";
+  if (status === "in_progress") return "bg-blue-100 text-blue-700";
+  if (status === "dismissed") return "bg-gray-200 text-gray-700";
+  return "bg-amber-100 text-amber-700";
 }

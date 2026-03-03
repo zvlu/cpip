@@ -67,21 +67,34 @@ async function ensureUserMembership(user: User): Promise<{ orgId: string; role: 
     orgId = createdOrg.id;
   }
 
-  const { error: userUpsertError } = await service.from("users").upsert(
-    {
-      id: user.id,
-      org_id: orgId,
-      email: user.email || `${user.id}@local.invalid`,
-      role: "owner",
-      use_demo_data: false,
-      demo_mode_prompt_seen: false,
-    },
-    { onConflict: "id" }
-  );
+  const userRecord: Record<string, unknown> = {
+    id: user.id,
+    org_id: orgId,
+    email: user.email || `${user.id}@local.invalid`,
+    role: "owner",
+    use_demo_data: false,
+    demo_mode_prompt_seen: false,
+  };
 
-  if (userUpsertError) {
-    throw userUpsertError;
+  let userUpsertError: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const upsert = await service.from("users").upsert(userRecord, { onConflict: "id" });
+    userUpsertError = upsert.error;
+    if (!userUpsertError) break;
+
+    // Backward compatibility for databases missing newer preference columns.
+    if (userUpsertError.message?.includes("demo_mode_prompt_seen")) {
+      delete userRecord.demo_mode_prompt_seen;
+      continue;
+    }
+    if (userUpsertError.message?.includes("use_demo_data")) {
+      delete userRecord.use_demo_data;
+      continue;
+    }
+    break;
   }
+
+  if (userUpsertError) throw userUpsertError;
 
   if (!orgId) {
     throw new Error("Failed to resolve organization id");
@@ -136,11 +149,29 @@ export async function requireApiContext(): Promise<AuthorizedApiContext | Unauth
   }
 
   const membershipClient = useServiceClientForData ? service : supabase;
-  const { data: membership, error: membershipError } = await membershipClient
+  let membershipError: { message?: string } | null = null;
+  let membership: { org_id: string; role: "owner" | "admin" | "member"; use_demo_data?: boolean } | null = null;
+
+  const membershipWithDemo = await membershipClient
     .from("users")
     .select("org_id, role, use_demo_data")
     .eq("id", user.id)
     .single();
+
+  if (membershipWithDemo.error?.message?.includes("use_demo_data")) {
+    const legacyMembership = await membershipClient
+      .from("users")
+      .select("org_id, role")
+      .eq("id", user.id)
+      .single();
+    membershipError = legacyMembership.error;
+    membership = legacyMembership.data
+      ? { ...legacyMembership.data, use_demo_data: false }
+      : null;
+  } else {
+    membershipError = membershipWithDemo.error;
+    membership = membershipWithDemo.data || null;
+  }
 
   if (membershipError || !membership?.org_id) {
     if (GUEST_MODE_ENABLED) {

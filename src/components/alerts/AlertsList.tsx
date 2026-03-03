@@ -7,13 +7,13 @@ import { loadAppSettings } from "@/lib/settings";
 import { apiFetch } from "@/lib/api/client";
 
 const ALERT_ICONS: Record<string, string> = {
-  score_drop: "📉",
-  score_rise: "📈",
-  viral_post: "🔥",
-  inactive: "😴",
-  new_milestone: "🏆",
-  anomaly: "⚠️",
-  campaign_target: "🎯",
+  score_drop: "SD",
+  score_rise: "SR",
+  viral_post: "VP",
+  inactive: "IN",
+  new_milestone: "NM",
+  anomaly: "AN",
+  campaign_target: "CT",
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -146,17 +146,14 @@ export function AlertsList() {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
-          <p className="text-gray-600 mt-2">Manage and track notifications</p>
-        </div>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+      <div className="space-y-5 sm:space-y-6">
+        <p className="text-gray-600">Manage and track notifications</p>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
           <p className="text-red-700 font-medium">Failed to load alerts</p>
           <p className="text-red-600 text-sm mt-1">{error}</p>
           <button
             onClick={fetchAlerts}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+            className="mt-4 rounded-xl bg-red-600 px-4 py-2 font-medium text-white transition-colors hover:bg-red-700"
           >
             Try Again
           </button>
@@ -167,24 +164,21 @@ export function AlertsList() {
 
   if (authRequired) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
-          <p className="text-gray-600 mt-2">Manage and track notifications</p>
-        </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+      <div className="space-y-5 sm:space-y-6">
+        <p className="text-gray-600">Manage and track notifications</p>
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 shadow-sm">
           <p className="text-gray-900 font-medium">Sign in to view alerts</p>
           <p className="text-gray-600 text-sm mt-1">Your alerts are account-scoped and available after authentication.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               onClick={() => router.push("/auth")}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              className="btn-primary text-sm"
             >
               Sign in
             </button>
             <button
               onClick={fetchAlerts}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-white transition-colors"
+              className="btn-secondary text-sm"
             >
               Refresh
             </button>
@@ -195,20 +189,17 @@ export function AlertsList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Alerts</h1>
-          <p className="text-gray-600 mt-2">
-            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}` : "All caught up"}
-          </p>
-        </div>
+        <p className="text-gray-600">
+          {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}` : "All caught up"}
+        </p>
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
             disabled={markingAllAsRead}
-            className="px-4 py-2 text-blue-600 hover:text-blue-700 font-medium text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="btn-secondary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {markingAllAsRead ? "Marking..." : "Mark all as read"}
           </button>
@@ -221,8 +212,10 @@ export function AlertsList() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-              filter === f ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              filter === f
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             {f === "all" ? "All" : f === "unread" ? `Unread (${unreadCount})` : "Critical"}
@@ -232,7 +225,7 @@ export function AlertsList() {
 
       {/* Alerts List */}
       {filteredAlerts.length === 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+        <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm">
           <p className="text-gray-500 text-lg">{alerts.length === 0 ? "No alerts yet" : "No alerts match this filter"}</p>
           <p className="text-gray-400 text-sm mt-1">
             {alerts.length === 0
@@ -277,12 +270,14 @@ export function AlertsList() {
               tabIndex={0}
               role="button"
               aria-label={`Alert ${alert.title}`}
-              className={`border rounded-lg p-4 cursor-pointer transition-all ${SEVERITY_COLORS[alert.severity] || SEVERITY_COLORS.info} ${
+              className={`rounded-xl border p-4 cursor-pointer transition-all ${SEVERITY_COLORS[alert.severity] || SEVERITY_COLORS.info} ${
                 alert.read ? "opacity-60" : ""
               }`}
             >
                 <div className="flex items-start gap-3 sm:gap-4">
-                <div className="text-2xl flex-shrink-0">{ALERT_ICONS[alert.type] || "ℹ️"}</div>
+                <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-current/20 bg-white/70 px-2 text-[11px] font-semibold tracking-wide text-gray-700">
+                  {ALERT_ICONS[alert.type] || "IN"}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3 sm:gap-4">
                     <div>

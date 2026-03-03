@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuthUser } from "@/lib/hooks/useAuthUser";
+import { HelpHint } from "@/components/ui/HelpHint";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -225,9 +226,13 @@ export default function AuthPage() {
 
             {mode === "sign-in" ? (
               <form className="space-y-4" onSubmit={handleSignIn}>
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium text-gray-900">Email</span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="signin-email" className="text-sm font-medium text-gray-900">Email</label>
+                    <HelpHint text="Use the email linked to your workspace account." />
+                  </div>
                   <input
+                    id="signin-email"
                     type="email"
                     required
                     value={email}
@@ -235,10 +240,14 @@ export default function AuthPage() {
                     placeholder="you@company.com"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium text-gray-900">Password</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="signin-password" className="text-sm font-medium text-gray-900">Password</label>
+                    <HelpHint text="Use your account password (minimum 8 characters)." />
+                  </div>
                   <input
+                    id="signin-password"
                     type="password"
                     required
                     minLength={8}
@@ -247,7 +256,7 @@ export default function AuthPage() {
                     placeholder="Your password"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                </label>
+                </div>
                 <button
                   type="submit"
                   disabled={submitting}
@@ -266,9 +275,13 @@ export default function AuthPage() {
               </form>
             ) : (
               <form className="space-y-4" onSubmit={handleSignUp}>
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium text-gray-900">Email</span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="signup-email" className="text-sm font-medium text-gray-900">Email</label>
+                    <HelpHint text="Used for sign-in and password recovery." />
+                  </div>
                   <input
+                    id="signup-email"
                     type="email"
                     required
                     value={email}
@@ -276,10 +289,14 @@ export default function AuthPage() {
                     placeholder="you@company.com"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium text-gray-900">Password</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="signup-password" className="text-sm font-medium text-gray-900">Password</label>
+                    <HelpHint text="Create a secure password with at least 8 characters." />
+                  </div>
                   <input
+                    id="signup-password"
                     type="password"
                     required
                     minLength={8}
@@ -288,10 +305,14 @@ export default function AuthPage() {
                     placeholder="At least 8 characters"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium text-gray-900">Confirm password</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="signup-confirm-password" className="text-sm font-medium text-gray-900">Confirm password</label>
+                    <HelpHint text="Re-enter the same password to confirm it." />
+                  </div>
                   <input
+                    id="signup-confirm-password"
                     type="password"
                     required
                     minLength={8}
@@ -300,7 +321,7 @@ export default function AuthPage() {
                     placeholder="Re-enter password"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                </label>
+                </div>
                 <button
                   type="submit"
                   disabled={submitting}

@@ -1,7 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 interface EmptyStateProps {
-  icon?: string;
+  icon?: ReactNode;
   title: string;
   description?: string;
   action?: {
@@ -10,10 +12,12 @@ interface EmptyStateProps {
   };
 }
 
-export function EmptyState({ icon = "📭", title, description, action }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4">
-      <div className="text-5xl mb-4">{icon}</div>
+      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-500">
+        {icon || "NA"}
+      </div>
       <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
       {description && <p className="text-gray-500 text-sm mb-6 max-w-sm text-center">{description}</p>}
       {action && (

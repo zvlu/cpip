@@ -5,7 +5,8 @@ import { z } from "zod";
 import { assertCampaignOwnedByOrg, assertDemoModeWritable, assertElevatedRole } from "@/lib/api/authorization";
 import { buildRateLimitKey, enforceRateLimit } from "@/lib/api/rateLimit";
 import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
-import { maybeCreateScoreAlerts } from "@/lib/alerts";
+import { maybeCreateMilestoneAndAnomalyAlerts, maybeCreateScoreAlerts } from "@/lib/alerts";
+import { DEFAULT_ALERT_RULES, sanitizeAlertRules } from "@/lib/alertRules";
 
 const ScoresCalculateBodySchema = z.object({
   campaign_id: z.string().uuid(),
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
       maxRequests: 10,
     });
     await assertCampaignOwnedByOrg(supabase, campaign_id, orgId);
+    const { data: orgRow } = await supabase.from("organizations").select("settings").eq("id", orgId).single();
+    const orgSettings =
+      orgRow && typeof orgRow.settings === "object" && orgRow.settings
+        ? (orgRow.settings as Record<string, unknown>)
+        : {};
+    const alertRules = sanitizeAlertRules(orgSettings.alert_rules || DEFAULT_ALERT_RULES);
 
     let query = supabase.from("campaign_creators").select("creator_id, creators(*)").eq("campaign_id", campaign_id);
     if (creator_id) query = query.eq("creator_id", creator_id);
@@ -120,6 +127,23 @@ export async function POST(req: NextRequest) {
           previousOverallScore: candidate.previousOverallScore,
           currentOverallScore: candidate.currentOverallScore,
           latestPostAt: candidate.latestPostAt,
+          inactiveDaysThreshold: alertRules.inactive_days_threshold,
+          scoreDropThreshold: alertRules.score_drop_threshold,
+          scoreRiseThreshold: alertRules.score_rise_threshold,
+        })
+      )
+    );
+    await Promise.all(
+      alertCandidates.map((candidate) =>
+        maybeCreateMilestoneAndAnomalyAlerts({
+          supabase,
+          orgId,
+          creatorId: candidate.creatorId,
+          creatorName: candidate.creatorName,
+          campaignId: campaign_id,
+          previousOverallScore: candidate.previousOverallScore,
+          currentOverallScore: candidate.currentOverallScore,
+          anomalyDeltaThreshold: alertRules.anomaly_delta_threshold,
         })
       )
     );

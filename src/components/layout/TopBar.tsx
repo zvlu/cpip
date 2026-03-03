@@ -1,19 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useCampaign } from "@/lib/context/CampaignContext";
 import { useAuthUser } from "@/lib/hooks/useAuthUser";
 import { useDemoMode } from "@/lib/hooks/useDemoMode";
-import { DEFAULT_APP_SETTINGS, loadAppSettings, resolveBrandCompanyName, SETTINGS_UPDATED_EVENT } from "@/lib/settings";
 import { apiFetch } from "@/lib/api/client";
+import { CreateCampaignModal } from "@/components/campaigns/CreateCampaignModal";
 
 type NavItem = {
   href: string;
   label: string;
   description: string;
+};
+
+type CommandItem = {
+  id: string;
+  label: string;
+  description: string;
+  keywords: string;
+  href?: string;
+  action?: "open_create_campaign";
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -28,49 +36,66 @@ export function TopBar() {
   const router = useRouter();
   const { selectedCampaign } = useCampaign();
   const [query, setQuery] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
-  const [companyName, setCompanyName] = useState(DEFAULT_APP_SETTINGS.branding.companyName);
-  const [logoUrl, setLogoUrl] = useState(DEFAULT_APP_SETTINGS.branding.logoUrl);
+  const commandListId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const commandButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const { user, loading: authLoading } = useAuthUser();
   const demoMode = useDemoMode();
 
   const currentPage = NAV_ITEMS.find((item) => item.href === pathname)?.label || "Overview";
 
-  const filteredItems = useMemo(() => {
+  const commandItems = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return NAV_ITEMS;
-    return NAV_ITEMS.filter(
-      (item) => item.label.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
+    const items: CommandItem[] = [
+      ...NAV_ITEMS.map((item) => ({
+        id: `nav-${item.href}`,
+        label: item.label,
+        description: item.description,
+        keywords: `${item.label} ${item.description}`,
+        href: item.href,
+      })),
+      {
+        id: "action-create-campaign",
+        label: "Create Campaign",
+        description: "Open campaign setup",
+        keywords: "campaign create new setup",
+        action: "open_create_campaign",
+      },
+      {
+        id: "action-add-creator",
+        label: "Add Creator",
+        description: "Open creators page to add someone",
+        keywords: "creator add new onboard",
+        href: "/creators",
+      },
+    ];
+
+    if (!q) return items;
+    return items.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        item.keywords.toLowerCase().includes(q)
     );
   }, [query]);
 
   useEffect(() => {
-    const applyBranding = () => {
-      const settings = loadAppSettings();
-      setCompanyName(resolveBrandCompanyName(settings.branding.companyName, user));
-      setLogoUrl(settings.branding.logoUrl);
-    };
-
-    applyBranding();
-    window.addEventListener(SETTINGS_UPDATED_EVENT, applyBranding);
-    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, applyBranding);
-  }, [user]);
-
-  useEffect(() => {
-    if (!isOpen) return;
+    if (!isPaletteOpen) return;
 
     const handleOutsideClick = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        setIsPaletteOpen(false);
       }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsOpen(false);
+        setIsPaletteOpen(false);
       }
     };
 
@@ -81,19 +106,29 @@ export function TopBar() {
       document.removeEventListener("mousedown", handleOutsideClick);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [isOpen]);
+  }, [isPaletteOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         inputRef.current?.focus();
-        setIsOpen(true);
+        setIsPaletteOpen(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!isPaletteOpen || commandItems.length === 0) return;
+    setActiveCommandIndex((current) => Math.min(current, commandItems.length - 1));
+  }, [commandItems, isPaletteOpen]);
+
+  useEffect(() => {
+    if (!isPaletteOpen || commandItems.length === 0) return;
+    commandButtonRefs.current[activeCommandIndex]?.focus();
+  }, [activeCommandIndex, commandItems.length, isPaletteOpen]);
 
   useEffect(() => {
     let isMounted = true;
@@ -120,35 +155,70 @@ export function TopBar() {
 
   const navigateTo = (href: string) => {
     setQuery("");
-    setIsOpen(false);
+    setIsPaletteOpen(false);
     router.push(href);
   };
 
+  const executeCommand = (command: CommandItem) => {
+    if (command.action === "open_create_campaign") {
+      setQuery("");
+      setIsPaletteOpen(false);
+      setIsCreateCampaignOpen(true);
+      return;
+    }
+
+    if (command.href) {
+      navigateTo(command.href);
+    }
+  };
+
+  const handlePaletteInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!isPaletteOpen) {
+        setIsPaletteOpen(true);
+        setActiveCommandIndex(0);
+        return;
+      }
+      setActiveCommandIndex((current) => (commandItems.length ? (current + 1) % commandItems.length : 0));
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!isPaletteOpen) {
+        setIsPaletteOpen(true);
+        setActiveCommandIndex(0);
+        return;
+      }
+      setActiveCommandIndex((current) =>
+        commandItems.length ? (current - 1 + commandItems.length) % commandItems.length : 0
+      );
+      return;
+    }
+
+    if (event.key === "Enter" && isPaletteOpen) {
+      event.preventDefault();
+      const command = commandItems[activeCommandIndex];
+      if (command) executeCommand(command);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      setIsPaletteOpen(false);
+    }
+  };
+
   return (
-    <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+    <div className="surface-panel mb-5 p-3 sm:p-4">
       {demoMode.enabled && (
-        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+        <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
           Demo data mode is ON. Changes are blocked until you switch back to real data.
         </div>
       )}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <Link href="/" className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 hover:bg-gray-100">
-            <Image
-              src={logoUrl}
-              alt={`${companyName} logo`}
-              className="h-6 w-auto object-contain"
-              width={120}
-              height={24}
-              unoptimized
-              loading="eager"
-              onError={(e) => {
-                e.currentTarget.src = DEFAULT_APP_SETTINGS.branding.logoUrl;
-              }}
-            />
-            <span className="text-xs font-semibold tracking-wide text-gray-600">{companyName}</span>
-          </Link>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Workspace</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Workspace</p>
           <h2 className="text-lg font-semibold text-gray-900">{currentPage}</h2>
           {selectedCampaign && (
             <p className="mt-1 text-sm text-gray-600">
@@ -157,26 +227,51 @@ export function TopBar() {
           )}
         </div>
 
-        <div className="relative w-full lg:max-w-xl" ref={searchContainerRef}>
+        <div className="relative min-w-0 w-full lg:max-w-xl lg:flex-1" ref={searchContainerRef}>
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setIsOpen(true)}
-            placeholder="Search pages (Ctrl/Cmd+K)"
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            onFocus={() => setIsPaletteOpen(true)}
+            onKeyDown={handlePaletteInputKeyDown}
+            placeholder="Search actions and pages (Ctrl/Cmd+K)"
+            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder-gray-500 shadow-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            role="combobox"
+            aria-expanded={isPaletteOpen}
+            aria-controls={commandListId}
+            aria-activedescendant={
+              isPaletteOpen && commandItems[activeCommandIndex] ? `${commandListId}-item-${activeCommandIndex}` : undefined
+            }
           />
-          {isOpen && (
-            <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-lg border border-gray-200 bg-white shadow-lg">
-              {filteredItems.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-500">No pages match your search.</p>
-              ) : (
-                filteredItems.map((item) => (
+          {isPaletteOpen && (
+            <div id={commandListId} role="listbox" className="absolute left-0 right-0 top-full z-30 mt-2 rounded-lg border border-gray-200 bg-white shadow-lg">
+              {commandItems.length === 0 ? (
+                <div className="space-y-2 px-4 py-3">
+                  <p className="text-sm text-gray-500">No command matches your search.</p>
                   <button
-                    key={item.href}
                     type="button"
-                    onClick={() => navigateTo(item.href)}
-                    className="block w-full border-b border-gray-100 px-4 py-3 text-left last:border-b-0 hover:bg-gray-50"
+                    onClick={() => setQuery("")}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    Clear search
+                  </button>
+                </div>
+              ) : (
+                commandItems.map((item, index) => (
+                  <button
+                    key={item.id}
+                    ref={(element) => {
+                      commandButtonRefs.current[index] = element;
+                    }}
+                    id={`${commandListId}-item-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={activeCommandIndex === index}
+                    onClick={() => executeCommand(item)}
+                    onMouseEnter={() => setActiveCommandIndex(index)}
+                    className={`block w-full border-b border-gray-100 px-4 py-3 text-left last:border-b-0 ${
+                      activeCommandIndex === index ? "bg-blue-50" : "hover:bg-gray-50"
+                    }`}
                   >
                     <p className="text-sm font-medium text-gray-900">{item.label}</p>
                     <p className="mt-0.5 text-xs text-gray-500">{item.description}</p>
@@ -187,12 +282,12 @@ export function TopBar() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-nowrap">
           <button
             type="button"
             disabled={demoMode.loading || demoMode.updating}
             onClick={() => demoMode.updateDemoMode(!demoMode.enabled)}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+            className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
               demoMode.enabled ? "border-amber-300 bg-amber-100 text-amber-900" : "border-gray-300 text-gray-700 hover:bg-gray-50"
             }`}
             title="Toggle demo data mode"
@@ -200,13 +295,13 @@ export function TopBar() {
             {demoMode.enabled ? "Demo: On" : "Demo: Off"}
           </button>
 
-          <div className="hidden items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm lg:inline-flex">
+          <div className="hidden min-w-0 max-w-full items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:inline-flex lg:max-w-[280px]">
             {authLoading ? (
               <span className="h-4 w-24 animate-pulse rounded bg-gray-200" />
             ) : user ? (
               <>
                 <span className="mr-2 inline-block h-2 w-2 rounded-full bg-green-500" />
-                <span className="max-w-[180px] truncate text-gray-700">{user.email || "Signed in"}</span>
+                <span className="max-w-full whitespace-normal break-all text-gray-700">{user.email || "Signed in"}</span>
               </>
             ) : (
               <>
@@ -217,11 +312,11 @@ export function TopBar() {
           </div>
 
           {pathname !== "/creators" && (
-            <Link href="/creators" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <Link href="/creators" className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-px hover:bg-blue-700">
               + Creator
             </Link>
           )}
-          <Link href="/alerts" className="relative rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <Link href="/alerts" className="relative rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-px hover:bg-gray-50">
             Alerts
             {unreadAlerts > 0 && (
               <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-semibold text-white">
@@ -231,6 +326,7 @@ export function TopBar() {
           </Link>
         </div>
       </div>
+      <CreateCampaignModal isOpen={isCreateCampaignOpen} onClose={() => setIsCreateCampaignOpen(false)} />
     </div>
   );
 }

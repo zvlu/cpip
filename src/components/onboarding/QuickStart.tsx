@@ -34,7 +34,7 @@ export function QuickStart({ steps, onDismiss, demoChoice }: QuickStartProps) {
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 px-3 sm:px-4 py-2.5 sm:py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg flex items-center gap-2 z-40 text-sm sm:text-base"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:-translate-y-px hover:bg-blue-700 sm:bottom-6 sm:right-6 sm:px-4 sm:py-3 sm:text-base"
       >
         <span>📚</span>
         <span>Quick Start ({completedCount}/{steps.length})</span>
@@ -43,7 +43,7 @@ export function QuickStart({ steps, onDismiss, demoChoice }: QuickStartProps) {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] max-w-96 bg-white rounded-lg border border-gray-200 shadow-lg z-40 animate-slide-up">
+    <div className="fixed bottom-4 right-4 z-40 w-[calc(100vw-2rem)] max-w-96 animate-slide-up rounded-2xl border border-gray-200 bg-white/95 shadow-xl backdrop-blur-sm sm:bottom-6 sm:right-6">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-2">

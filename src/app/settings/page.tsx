@@ -1,13 +1,21 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { HelpHint } from "@/components/ui/HelpHint";
 import { useToast } from "@/lib/hooks/useToast";
 import { AppSettings, DEFAULT_APP_SETTINGS, loadAppSettings, saveAppSettings, sanitizeAppSettings } from "@/lib/settings";
 import { useCampaign } from "@/lib/context/CampaignContext";
 import { useDemoMode } from "@/lib/hooks/useDemoMode";
 import { apiFetch } from "@/lib/api/client";
+import { AlertRules, DEFAULT_ALERT_RULES, sanitizeAlertRules } from "@/lib/alertRules";
+import {
+  DEFAULT_WEEKLY_BRIEF_DELIVERY_SETTINGS,
+  WeeklyBriefDeliverySettings,
+  sanitizeWeeklyBriefDeliverySettings,
+} from "@/lib/briefDelivery";
 
 const MAX_LOGO_UPLOAD_BYTES = 1_200_000;
 const ALLOWED_LOGO_UPLOAD_TYPES = ["image/png", "image/svg+xml", "image/webp", "image/jpeg"];
@@ -23,10 +31,26 @@ type DashboardExportData = {
   tier_distribution: Record<string, number>;
 };
 
+type ScrapeJobStatus = "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
+type ScrapeJobSummary = {
+  id: string;
+  status: ScrapeJobStatus;
+  creator_id: string;
+  campaign_id: string | null;
+  created_at: string;
+  updated_at: string;
+  error_message: string | null;
+};
+
 export default function SettingsPage() {
   const { selectedCampaign } = useCampaign();
   const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [draftSettings, setDraftSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [alertRules, setAlertRules] = useState<AlertRules>(DEFAULT_ALERT_RULES);
+  const [alertRulesSaving, setAlertRulesSaving] = useState(false);
+  const [briefDelivery, setBriefDelivery] = useState<WeeklyBriefDeliverySettings>(DEFAULT_WEEKLY_BRIEF_DELIVERY_SETTINGS);
+  const [briefDeliverySaving, setBriefDeliverySaving] = useState(false);
+  const [briefDeliverySending, setBriefDeliverySending] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
@@ -40,6 +64,9 @@ export default function SettingsPage() {
   const [exportType, setExportType] = useState<ExportType>("workbook");
   const [isExportingData, setIsExportingData] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [scrapeJobs, setScrapeJobs] = useState<ScrapeJobSummary[]>([]);
+  const [scrapeJobsLoading, setScrapeJobsLoading] = useState(false);
+  const [scrapeJobsError, setScrapeJobsError] = useState<string | null>(null);
   const logoUploadInputRef = useRef<HTMLInputElement>(null);
   const { toasts, removeToast, success, error, info, warning } = useToast();
   const demoMode = useDemoMode();
@@ -54,6 +81,55 @@ export default function SettingsPage() {
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotificationPermission(window.Notification.permission);
     }
+  }, []);
+
+  const fetchScrapeJobs = useCallback(async () => {
+    setScrapeJobsLoading(true);
+    setScrapeJobsError(null);
+    try {
+      const response = await apiFetch("/api/scrape/jobs?limit=50", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load scrape jobs.");
+      }
+      const json = await response.json();
+      setScrapeJobs(Array.isArray(json?.data) ? json.data : []);
+    } catch {
+      setScrapeJobsError("Could not load scrape jobs.");
+    } finally {
+      setScrapeJobsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchScrapeJobs();
+  }, [fetchScrapeJobs]);
+
+  useEffect(() => {
+    const fetchAlertRules = async () => {
+      try {
+        const response = await apiFetch("/api/settings/alert-rules", { cache: "no-store" });
+        if (!response.ok) return;
+        const json = await response.json();
+        setAlertRules(sanitizeAlertRules(json?.data || DEFAULT_ALERT_RULES));
+      } catch {
+        // Keep defaults if request fails.
+      }
+    };
+    fetchAlertRules();
+  }, []);
+
+  useEffect(() => {
+    const fetchBriefDelivery = async () => {
+      try {
+        const response = await apiFetch("/api/settings/brief-delivery", { cache: "no-store" });
+        if (!response.ok) return;
+        const json = await response.json();
+        setBriefDelivery(sanitizeWeeklyBriefDeliverySettings(json?.data || DEFAULT_WEEKLY_BRIEF_DELIVERY_SETTINGS));
+      } catch {
+        // Keep defaults if request fails.
+      }
+    };
+    fetchBriefDelivery();
   }, []);
 
   useEffect(() => {
@@ -115,6 +191,75 @@ export default function SettingsPage() {
       body: "Your alerts and workflow settings are active.",
     });
     success("Test notification sent.");
+  };
+
+  const updateAlertRule = (key: keyof AlertRules, value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setAlertRules((prev) => sanitizeAlertRules({ ...prev, [key]: parsed }));
+  };
+
+  const saveAlertRules = async () => {
+    setAlertRulesSaving(true);
+    try {
+      const response = await apiFetch("/api/settings/alert-rules", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(alertRules),
+      });
+      if (!response.ok) throw new Error("Failed to save alert rules.");
+      const json = await response.json();
+      setAlertRules(sanitizeAlertRules(json?.data || alertRules));
+      success("Alert rules saved.");
+    } catch {
+      error("Failed to save alert rules.");
+    } finally {
+      setAlertRulesSaving(false);
+    }
+  };
+
+  const saveBriefDelivery = async () => {
+    setBriefDeliverySaving(true);
+    try {
+      const response = await apiFetch("/api/settings/brief-delivery", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(briefDelivery),
+      });
+      if (!response.ok) throw new Error("Failed to save weekly brief delivery settings.");
+      const json = await response.json();
+      setBriefDelivery(sanitizeWeeklyBriefDeliverySettings(json?.data || briefDelivery));
+      success("Weekly brief delivery settings saved.");
+    } catch {
+      error("Failed to save weekly brief delivery settings.");
+    } finally {
+      setBriefDeliverySaving(false);
+    }
+  };
+
+  const sendWeeklyBriefTest = async () => {
+    setBriefDeliverySending(true);
+    try {
+      const response = await apiFetch("/api/brief/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_id: campaignId || "default",
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to send weekly brief.");
+      const json = await response.json();
+      const first = Array.isArray(json?.data) ? json.data[0] : null;
+      if (first?.delivered) {
+        success("Weekly brief sent to webhook.");
+      } else {
+        info(first?.reason || "Dispatch completed.");
+      }
+    } catch {
+      error("Failed to send weekly brief.");
+    } finally {
+      setBriefDeliverySending(false);
+    }
   };
 
   const handleSave = () => {
@@ -299,25 +444,44 @@ export default function SettingsPage() {
     }
   };
 
+  const scrapeJobsCounts = useMemo(() => {
+    const counts = {
+      queued: 0,
+      running: 0,
+      completed: 0,
+      partial: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+    for (const job of scrapeJobs) {
+      if (job.status in counts) {
+        counts[job.status] += 1;
+      }
+    }
+    return counts;
+  }, [scrapeJobs]);
+
+  const latestFailedJob = useMemo(() => {
+    return scrapeJobs.find((job) => job.status === "failed" || job.status === "partial") || null;
+  }, [scrapeJobs]);
+
+  const degradedJobs = useMemo(() => {
+    return scrapeJobs
+      .filter((job) => job.status === "failed" || job.status === "partial")
+      .slice(0, 5);
+  }, [scrapeJobs]);
+
   if (!isLoaded) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Settings</h1>
-          <p className="mt-2 text-gray-600">Loading your settings...</p>
-        </div>
+      <div className="space-y-5 sm:space-y-6 animate-fade-in">
+        <p className="text-gray-600">Loading your settings...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Settings</h1>
-          <p className="mt-2 text-gray-600">Control defaults, alerts, dashboard behavior, and notifications.</p>
-        </div>
-      </div>
+    <div className="space-y-5 sm:space-y-6 animate-fade-in">
+      <p className="text-gray-600">Control defaults, alerts, dashboard behavior, and notifications.</p>
 
       <section className="card">
         <div className="card-header">
@@ -326,7 +490,10 @@ export default function SettingsPage() {
         </div>
         <div className="card-body space-y-4">
           <label className="space-y-1 block">
-            <span className="text-sm font-medium text-gray-900">Company Name</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Company Name
+              <HelpHint text="Shown across navigation and workspace branding." />
+            </span>
             <input
               type="text"
               className="input-base"
@@ -345,7 +512,10 @@ export default function SettingsPage() {
           </label>
 
           <label className="space-y-1 block">
-            <span className="text-sm font-medium text-gray-900">Logo URL</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Logo URL
+              <HelpHint text="Public image URL used as your workspace logo." />
+            </span>
             <input
               type="url"
               className="input-base"
@@ -365,7 +535,10 @@ export default function SettingsPage() {
           </label>
 
           <label className="space-y-2 block">
-            <span className="text-sm font-medium text-gray-900">Upload Logo</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Upload Logo
+              <HelpHint text="Upload an image file to replace the logo URL." />
+            </span>
             <input
               ref={logoUploadInputRef}
               type="file"
@@ -427,7 +600,10 @@ export default function SettingsPage() {
         </div>
         <div className="card-body grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-sm font-medium text-gray-900">Default AOV ($)</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Default AOV ($)
+              <HelpHint text="Default average order value for new campaigns." />
+            </span>
             <input
               type="number"
               min={0}
@@ -441,7 +617,10 @@ export default function SettingsPage() {
             </p>
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-gray-900">Default Commission (%)</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Default Commission (%)
+              <HelpHint text="Default creator payout rate for new campaigns." />
+            </span>
             <input
               type="number"
               min={0}
@@ -462,7 +641,10 @@ export default function SettingsPage() {
             </p>
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-gray-900">Default CTR (%)</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Default CTR (%)
+              <HelpHint text="Fallback CTR when real click data is missing." />
+            </span>
             <input
               type="number"
               min={0}
@@ -483,7 +665,10 @@ export default function SettingsPage() {
             </p>
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-gray-900">Default CVR (%)</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Default CVR (%)
+              <HelpHint text="Fallback CVR when conversion data is unavailable." />
+            </span>
             <input
               type="number"
               min={0}
@@ -578,8 +763,84 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-gray-500">Set how alert feeds and browser notifications behave.</p>
         </div>
         <div className="card-body space-y-4">
+          <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-900">Server Alert Rules (Org-wide)</p>
+            <p className="text-xs text-gray-600">
+              These thresholds drive automatic score/inactivity/anomaly alerts and recommendation priorities.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  Score drop threshold
+                  <HelpHint text="Trigger an alert when score drops by this many points." />
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  className="input-base"
+                  value={alertRules.score_drop_threshold}
+                  onChange={(e) => updateAlertRule("score_drop_threshold", e.target.value)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  Score rise threshold
+                  <HelpHint text="Trigger an alert when score rises by this many points." />
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  className="input-base"
+                  value={alertRules.score_rise_threshold}
+                  onChange={(e) => updateAlertRule("score_rise_threshold", e.target.value)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  Inactivity days threshold
+                  <HelpHint text="Flag creators with no new content for this many days." />
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  className="input-base"
+                  value={alertRules.inactive_days_threshold}
+                  onChange={(e) => updateAlertRule("inactive_days_threshold", e.target.value)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  Anomaly delta threshold
+                  <HelpHint text="Trigger anomaly alerts when metrics deviate by this threshold." />
+                </span>
+                <input
+                  type="number"
+                  min={5}
+                  max={100}
+                  className="input-base"
+                  value={alertRules.anomaly_delta_threshold}
+                  onChange={(e) => updateAlertRule("anomaly_delta_threshold", e.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={saveAlertRules}
+              disabled={alertRulesSaving}
+            >
+              {alertRulesSaving ? "Saving..." : "Save Alert Rules"}
+            </button>
+          </div>
+
           <label className="space-y-1 block">
-            <span className="text-sm font-medium text-gray-900">Default alerts filter</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Default alerts filter
+              <HelpHint text="Default alert view shown when opening Alerts." />
+            </span>
             <select
               className="input-base"
               value={draftSettings.alerts.defaultFilter}
@@ -667,7 +928,10 @@ export default function SettingsPage() {
             Export source: <span className="font-medium text-gray-800">{selectedCampaign?.name || "No campaign selected"}</span>
           </p>
           <label className="space-y-1 block">
-            <span className="text-sm font-medium text-gray-900">Export format</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Export format
+              <HelpHint text="Choose the default export format for campaign data." />
+            </span>
             <select
               className="input-base"
               value={exportType}
@@ -692,6 +956,176 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <section className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">Weekly Brief Delivery</h2>
+          <p className="mt-1 text-sm text-gray-500">Send weekly campaign briefs to your webhook destination.</p>
+        </div>
+        <div className="card-body space-y-4">
+          <ToggleRow
+            title="Enable weekly brief delivery"
+            description="When enabled, dispatch sends a structured weekly brief payload to your webhook."
+            checked={briefDelivery.enabled}
+            onChange={(checked) => setBriefDelivery((prev) => ({ ...prev, enabled: checked }))}
+          />
+
+          <label className="space-y-1 block">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Webhook URL
+              <HelpHint text="Webhook endpoint that receives weekly brief payloads." />
+            </span>
+            <input
+              type="url"
+              className="input-base"
+              placeholder="https://hooks.slack.com/services/..."
+              value={briefDelivery.webhook_url}
+              onChange={(e) => setBriefDelivery((prev) => ({ ...prev, webhook_url: e.target.value }))}
+            />
+          </label>
+
+          <ToggleRow
+            title="Include action recommendations"
+            description="Include action recommendation payload in webhook posts."
+            checked={briefDelivery.include_action_recommendations}
+            onChange={(checked) =>
+              setBriefDelivery((prev) => ({ ...prev, include_action_recommendations: checked }))
+            }
+          />
+
+          <label className="space-y-1 block">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+              Payload format
+              <HelpHint text="Use Generic for most tools, or Slack Blocks for Slack webhooks." />
+            </span>
+            <select
+              className="input-base"
+              value={briefDelivery.payload_format}
+              onChange={(e) =>
+                setBriefDelivery((prev) => ({
+                  ...prev,
+                  payload_format: e.target.value === "slack_blocks" ? "slack_blocks" : "generic",
+                }))
+              }
+            >
+              <option value="generic">Generic JSON (event + markdown + blocks)</option>
+              <option value="slack_blocks">Slack Blocks (direct Slack webhook payload)</option>
+            </select>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={saveBriefDelivery}
+              disabled={briefDeliverySaving}
+            >
+              {briefDeliverySaving ? "Saving..." : "Save Delivery Settings"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost text-sm"
+              onClick={sendWeeklyBriefTest}
+              disabled={briefDeliverySending}
+            >
+              {briefDeliverySending ? "Sending..." : "Send Test Brief"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">Scrape Jobs</h2>
+          <p className="mt-1 text-sm text-gray-500">Track queued, running, and failed scraper workloads.</p>
+        </div>
+        <div className="card-body space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatusPill label="Queued" value={scrapeJobsCounts.queued} tone="blue" />
+            <StatusPill label="Running" value={scrapeJobsCounts.running} tone="amber" />
+            <StatusPill label="Partial" value={scrapeJobsCounts.partial} tone="amber" />
+            <StatusPill label="Failed" value={scrapeJobsCounts.failed} tone="red" />
+            <StatusPill label="Completed" value={scrapeJobsCounts.completed} tone="green" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-secondary text-sm" onClick={fetchScrapeJobs} disabled={scrapeJobsLoading}>
+              {scrapeJobsLoading ? "Refreshing..." : "Refresh Scrape Jobs"}
+            </button>
+            {scrapeJobsError && <p className="text-sm text-red-700">{scrapeJobsError}</p>}
+          </div>
+
+          {latestFailedJob ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-medium text-amber-900">Latest degraded scrape job</p>
+              <p className="mt-1 text-xs text-amber-800">
+                Status: {latestFailedJob.status} · Creator:{" "}
+                <Link
+                  href={
+                    latestFailedJob.campaign_id
+                      ? `/creators?creator_id=${encodeURIComponent(latestFailedJob.creator_id)}&campaign_id=${encodeURIComponent(latestFailedJob.campaign_id)}`
+                      : `/creators?creator_id=${encodeURIComponent(latestFailedJob.creator_id)}`
+                  }
+                  className="font-medium underline hover:no-underline"
+                >
+                  {latestFailedJob.creator_id}
+                </Link>
+              </p>
+              {latestFailedJob.error_message ? (
+                <p className="mt-1 text-xs text-amber-800">Error: {latestFailedJob.error_message}</p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-800">No error message was provided.</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">No failed or partial scrape jobs in the latest loaded window.</p>
+          )}
+
+          {degradedJobs.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-gray-700">Status</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-700">Creator</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-700">Updated</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-700">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {degradedJobs.map((job) => (
+                    <tr key={job.id}>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                            job.status === "failed" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {job.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-gray-700">{job.creator_id}</td>
+                      <td className="px-3 py-2 text-gray-600">{new Date(job.updated_at).toLocaleString()}</td>
+                      <td className="px-3 py-2">
+                        <Link
+                          href={
+                            job.campaign_id
+                              ? `/creators?creator_id=${encodeURIComponent(job.creator_id)}&campaign_id=${encodeURIComponent(job.campaign_id)}`
+                              : `/creators?creator_id=${encodeURIComponent(job.creator_id)}`
+                          }
+                          className="text-blue-700 underline hover:no-underline"
+                        >
+                          Open
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="card border-red-200">
         <div className="card-header">
           <h2 className="text-lg font-semibold text-red-800">Danger Zone</h2>
@@ -705,7 +1139,7 @@ export default function SettingsPage() {
       </section>
 
       {hasUnsavedChanges && (
-        <div className="sticky bottom-4 z-30 rounded-xl border border-blue-200 bg-white p-4 shadow-lg">
+        <div className="sticky bottom-4 z-30 rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-lg backdrop-blur-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-gray-700">You have unsaved settings changes.</p>
             <div className="flex items-center gap-2">
@@ -795,7 +1229,7 @@ function ToggleRow({
           role="switch"
           aria-checked={checked}
           onClick={() => onChange(!checked)}
-          className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+          className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus-visible:outline-none ${
             checked ? "bg-blue-600" : "bg-gray-300"
           }`}
         >
@@ -804,6 +1238,32 @@ function ToggleRow({
           />
         </button>
       </div>
+    </div>
+  );
+}
+
+function StatusPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "blue" | "amber" | "red" | "green";
+}) {
+  const toneClass =
+    tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-900"
+      : tone === "amber"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : tone === "red"
+          ? "border-red-200 bg-red-50 text-red-900"
+          : "border-green-200 bg-green-50 text-green-900";
+
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
+      <p className="text-xs font-medium">{label}</p>
+      <p className="text-lg font-semibold">{value}</p>
     </div>
   );
 }

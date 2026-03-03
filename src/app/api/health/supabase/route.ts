@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requireApiContext } from "@/lib/auth/server";
 import { getRequestId } from "@/lib/api/response";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await requireApiContext();
   if (!auth.ok) return auth.response;

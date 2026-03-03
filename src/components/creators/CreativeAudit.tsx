@@ -67,7 +67,14 @@ export function CreativeAudit({
   }
 
   if (!audit) {
-    return <EmptyState icon="🎬" title="No audit data" description="Run a creative audit to analyze content" />;
+    return (
+      <EmptyState
+        icon="🎬"
+        title="No audit data"
+        description="Run a creative audit to analyze content"
+        action={{ label: scrapeLoading ? "Scraping..." : "Run Scrape", onClick: () => void onRunScrape() }}
+      />
+    );
   }
 
   return (

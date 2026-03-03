@@ -21,10 +21,10 @@ const TYPE_STYLES = {
 };
 
 const TYPE_ICONS = {
-  info: "ℹ️",
-  tip: "💡",
-  warning: "⚠️",
-  success: "✓",
+  info: "IN",
+  tip: "TIP",
+  warning: "AL",
+  success: "OK",
 };
 
 export function InfoCard({
@@ -42,7 +42,9 @@ export function InfoCard({
   return (
     <div className={`p-4 rounded-lg border ${TYPE_STYLES[type]}`}>
       <div className="flex items-start gap-3">
-        <div className="text-xl flex-shrink-0">{icon || TYPE_ICONS[type]}</div>
+        <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-current/20 bg-white/70 px-2 text-[11px] font-semibold tracking-wide flex-shrink-0">
+          {icon || TYPE_ICONS[type]}
+        </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm">{title}</h3>
           <p className="text-sm mt-1 opacity-90">{description}</p>

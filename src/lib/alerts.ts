@@ -81,6 +81,8 @@ export async function maybeCreateScoreAlerts(params: {
   currentOverallScore: number;
   latestPostAt?: string | null;
   inactiveDaysThreshold?: number;
+  scoreDropThreshold?: number;
+  scoreRiseThreshold?: number;
 }) {
   const {
     supabase,
@@ -92,6 +94,8 @@ export async function maybeCreateScoreAlerts(params: {
     currentOverallScore,
     latestPostAt,
     inactiveDaysThreshold = 14,
+    scoreDropThreshold = 10,
+    scoreRiseThreshold = 10,
   } = params;
 
   const readableCreator = creatorName || "Creator";
@@ -100,7 +104,7 @@ export async function maybeCreateScoreAlerts(params: {
   if (typeof previousOverallScore === "number" && Number.isFinite(previousOverallScore)) {
     const delta = round(currentOverallScore - previousOverallScore);
 
-    if (delta <= -10) {
+    if (delta <= -scoreDropThreshold) {
       inserts.push({
         org_id: orgId,
         creator_id: creatorId,
@@ -117,7 +121,7 @@ export async function maybeCreateScoreAlerts(params: {
           delta,
         },
       });
-    } else if (delta >= 10) {
+    } else if (delta >= scoreRiseThreshold) {
       inserts.push({
         org_id: orgId,
         creator_id: creatorId,
@@ -156,6 +160,73 @@ export async function maybeCreateScoreAlerts(params: {
           },
         });
       }
+    }
+  }
+
+  await Promise.all(inserts.map((entry) => insertAlertWithDedup(supabase, entry)));
+}
+
+export async function maybeCreateMilestoneAndAnomalyAlerts(params: {
+  supabase: SupabaseClient;
+  orgId: string;
+  creatorId: string;
+  creatorName?: string | null;
+  campaignId: string;
+  previousOverallScore?: number | null;
+  currentOverallScore: number;
+  anomalyDeltaThreshold?: number;
+}) {
+  const {
+    supabase,
+    orgId,
+    creatorId,
+    creatorName,
+    campaignId,
+    previousOverallScore,
+    currentOverallScore,
+    anomalyDeltaThreshold = 25,
+  } = params;
+
+  const readableCreator = creatorName || "Creator";
+  const inserts: AlertInsert[] = [];
+  const current = round(currentOverallScore);
+
+  if (typeof previousOverallScore === "number" && Number.isFinite(previousOverallScore)) {
+    const previous = round(previousOverallScore);
+    const delta = round(current - previous);
+
+    if (previous < 80 && current >= 80) {
+      inserts.push({
+        org_id: orgId,
+        creator_id: creatorId,
+        type: "new_milestone",
+        severity: "info",
+        title: `${readableCreator} reached top-tier status`,
+        message: `Overall score moved to ${current}, crossing the 80+ elite threshold.`,
+        data: {
+          campaign_id: campaignId,
+          previous_overall_score: previous,
+          current_overall_score: current,
+          milestone: "tier_s",
+        },
+      });
+    }
+
+    if (Math.abs(delta) >= anomalyDeltaThreshold) {
+      inserts.push({
+        org_id: orgId,
+        creator_id: creatorId,
+        type: "anomaly",
+        severity: Math.abs(delta) >= 35 ? "critical" : "warning",
+        title: `${readableCreator} performance anomaly detected`,
+        message: `Overall score changed by ${delta > 0 ? `+${delta}` : delta} in one cycle.`,
+        data: {
+          campaign_id: campaignId,
+          previous_overall_score: previous,
+          current_overall_score: current,
+          delta,
+        },
+      });
     }
   }
 

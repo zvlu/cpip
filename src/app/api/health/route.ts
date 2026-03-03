@@ -4,6 +4,8 @@ import { requireApiContext } from "@/lib/auth/server";
 import { z } from "zod";
 import { getRequestId, handleApiError } from "@/lib/api/response";
 
+export const dynamic = "force-dynamic";
+
 const REQUIRED_ENV = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",

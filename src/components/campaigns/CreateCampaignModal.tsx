@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useCampaign } from "@/lib/context/CampaignContext";
 import { loadAppSettings } from "@/lib/settings";
 import { apiFetch } from "@/lib/api/client";
+import { HelpHint } from "@/components/ui/HelpHint";
+import { ModalShell } from "@/components/ui/ModalShell";
 
 interface CreateCampaignModalProps {
   isOpen: boolean;
@@ -81,17 +83,21 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Create New Campaign</h2>
+    <ModalShell maxWidthClassName="max-w-md" onClose={onClose} titleId="create-campaign-modal-title">
+        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white p-6">
+          <h2 id="create-campaign-modal-title" className="text-xl font-bold text-gray-900">
+            Create New Campaign
+          </h2>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{error}</div>}
 
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-1">Campaign Name *</label>
+            <div className="mb-1 flex items-center gap-1.5">
+              <label className="block text-sm font-medium text-gray-900">Campaign Name *</label>
+              <HelpHint text="Name shown in dashboards, alerts, and exports." />
+            </div>
             <input
               type="text"
               name="name"
@@ -104,7 +110,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-1">Product Name</label>
+            <div className="mb-1 flex items-center gap-1.5">
+              <label className="block text-sm font-medium text-gray-900">Product Name</label>
+              <HelpHint text="Product or offer promoted by this campaign (optional)." />
+            </div>
             <input
               type="text"
               name="product_name"
@@ -117,7 +126,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">AOV ($)</label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-medium text-gray-900">AOV ($)</label>
+                <HelpHint text="Average order value per conversion, in USD." />
+              </div>
               <input
                 type="number"
                 name="aov"
@@ -128,7 +140,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Commission (%)</label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-medium text-gray-900">Commission (%)</label>
+                <HelpHint text="Creator payout as a percentage of attributed revenue." />
+              </div>
               <input
                 type="number"
                 name="commission_rate"
@@ -142,7 +157,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Default CTR (%)</label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-medium text-gray-900">Default CTR (%)</label>
+                <HelpHint text="Fallback click-through rate when real data is unavailable." />
+              </div>
               <input
                 type="number"
                 name="default_ctr"
@@ -153,7 +171,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Default CVR (%)</label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-medium text-gray-900">Default CVR (%)</label>
+                <HelpHint text="Fallback conversion rate when conversion data is unavailable." />
+              </div>
               <input
                 type="number"
                 name="default_cvr"
@@ -182,7 +203,6 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

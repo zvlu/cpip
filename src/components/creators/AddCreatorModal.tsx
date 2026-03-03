@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { HelpHint } from "@/components/ui/HelpHint";
 import { InfoCard } from "@/components/ui/InfoCard";
+import { ModalShell } from "@/components/ui/ModalShell";
 import { useCampaign } from "@/lib/context/CampaignContext";
 import { apiFetch } from "@/lib/api/client";
 
@@ -83,8 +84,13 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
         });
 
         if (scrapeRes.ok) {
-          const { scraped } = await scrapeRes.json();
-          setSuccess(`✅ Done. Added creator and scraped ${scraped} posts.`);
+          const payload = await scrapeRes.json();
+          if (payload?.mode === "async") {
+            setSuccess("✅ Creator added. Scrape queued and will run shortly.");
+          } else {
+            const scraped = Number(payload?.scraped || 0);
+            setSuccess(`✅ Done. Added creator and scraped ${scraped} posts.`);
+          }
         } else {
           setSuccess(`✅ Creator added. Scrape is pending.`);
         }
@@ -109,11 +115,12 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <ModalShell maxWidthClassName="max-w-md" onClose={onClose} titleId="add-creator-modal-title">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 className="text-2xl font-bold text-gray-900">Add Creator</h2>
+        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white p-6">
+          <h2 id="add-creator-modal-title" className="text-2xl font-bold text-gray-900">
+            Add Creator
+          </h2>
           <p className="text-sm text-gray-600 mt-1">Quickly add a TikTok creator to your workspace</p>
         </div>
 
@@ -151,9 +158,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">TikTok Username</label>
-              <Tooltip text="Enter the creator&apos;s TikTok handle. You can include or omit the @ symbol.">
-                <span className="text-gray-400 cursor-help font-bold">?</span>
-              </Tooltip>
+              <HelpHint text="Enter the creator&apos;s TikTok handle, with or without @." />
             </div>
             <input
               type="text"
@@ -172,9 +177,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">Display Name</label>
-              <Tooltip text="The creator&apos;s real name or brand name. This helps you identify them in reports.">
-                <span className="text-gray-400 cursor-help font-bold">?</span>
-              </Tooltip>
+              <HelpHint text="Display name used in reports and creator lists." />
             </div>
             <input
               type="text"
@@ -192,9 +195,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">Content Category</label>
-              <Tooltip text="Select the primary category of content the creator produces. This helps organize and filter creators.">
-                <span className="text-gray-400 cursor-help font-bold">?</span>
-              </Tooltip>
+              <HelpHint text="Primary content category for filtering and organization." />
             </div>
             <select
               name="category"
@@ -217,9 +218,7 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
           <div>
             <div className="flex items-center gap-2 mb-2">
               <label className="block text-sm font-semibold text-gray-900">Tags</label>
-              <Tooltip text="Add custom tags to organize and filter creators. Separate multiple tags with commas.">
-                <span className="text-gray-400 cursor-help font-bold">?</span>
-              </Tooltip>
+              <HelpHint text="Comma-separated tags for organizing and filtering creators." />
             </div>
             <input
               type="text"
@@ -271,7 +270,6 @@ export function AddCreatorModal({ isOpen, onClose, onSuccess }: AddCreatorModalP
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

@@ -95,21 +95,21 @@ export default function Home() {
 
   const quickStartSteps = [
     {
-      icon: "📦",
+      icon: "01",
       title: "Create your first campaign",
       description: "Set campaign AOV, commission, and conversion defaults.",
       action: { label: "Open Campaign Selector", onClick: () => info("Use the Campaign dropdown in the sidebar to create one.") },
       completed: Boolean(campaignId),
     },
     {
-      icon: "👥",
+      icon: "02",
       title: "Add creators",
       description: "Build your roster so scoring and analytics can run.",
       action: { label: "Go to Creators", onClick: () => router.push("/creators") },
       completed: stats.creators > 0,
     },
     {
-      icon: "🔔",
+      icon: "03",
       title: "Review alerts daily",
       description: "Stay on top of score drops, anomalies, and opportunities.",
       action: { label: "Open Alerts", onClick: () => router.push("/alerts") },
@@ -119,19 +119,16 @@ export default function Home() {
   const shouldShowQuickStart = quickStartVisible && dashboardSettings.showQuickStartChecklist && !dashboardSettings.quickStartDismissed;
 
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-5 sm:space-y-7 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">Dashboard</h1>
-          <p className="text-gray-600 mt-2">Monitor creator performance and estimated revenue in real-time</p>
-        </div>
+        <p className="max-w-2xl text-gray-600">Monitor creator performance and estimated revenue in real-time</p>
         <div className="flex gap-2">
           <Tooltip text="Refresh all performance scores and revenue estimates">
             <button
               onClick={handleRecalculate}
               disabled={recalculating || !campaignId}
-              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="btn-primary w-full sm:w-auto flex items-center justify-center gap-2"
             >
               {recalculating ? (
                 <>
@@ -140,7 +137,6 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <span>🔄</span>
                   Recalculate
                 </>
               )}
@@ -151,8 +147,8 @@ export default function Home() {
 
       {/* Last Updated */}
       {lastUpdated && (
-        <div className="text-sm text-gray-500 flex items-center gap-2">
-          <span>⏱️</span>
+        <div className="surface-panel inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500">
+          <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
           <span>Last updated: {formatTime(lastUpdated)}</span>
         </div>
       )}
@@ -161,40 +157,40 @@ export default function Home() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Link
           href="/creators"
-          className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg hover:shadow-md transition-all cursor-pointer group"
+          className="group rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-semibold text-blue-900 group-hover:text-blue-700">Add Creators</h3>
               <p className="text-sm text-blue-700 mt-1">Build your creator roster</p>
             </div>
-            <span className="text-2xl">👥</span>
+            <QuickActionIcon variant="creators" />
           </div>
         </Link>
 
         <Link
           href="/alerts"
-          className="p-4 bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg hover:shadow-md transition-all cursor-pointer group"
+          className="group rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-semibold text-orange-900 group-hover:text-orange-700">View Alerts</h3>
               <p className="text-sm text-orange-700 mt-1">Check performance notifications</p>
             </div>
-            <span className="text-2xl">🔔</span>
+            <QuickActionIcon variant="alerts" />
           </div>
         </Link>
 
         <Link
           href="/creators"
-          className="p-4 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg hover:shadow-md transition-all cursor-pointer group"
+          className="group rounded-2xl border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-semibold text-green-900 group-hover:text-green-700">Find Similar</h3>
               <p className="text-sm text-green-700 mt-1">Discover lookalike creators</p>
             </div>
-            <span className="text-2xl">🔍</span>
+            <QuickActionIcon variant="search" />
           </div>
         </Link>
       </div>
@@ -203,14 +199,14 @@ export default function Home() {
       {dashboardSettings.showInsightTips && (
         <div className="space-y-3">
           <InfoCard
-            icon="📊"
+            icon="ROI"
             type="tip"
             title="Predictive ROI Score"
             description="Each creator now has a conversion probability and viral potential score. Use these to prioritize spend."
             dismissible
           />
           <InfoCard
-            icon="🎬"
+            icon="AUD"
             type="tip"
             title="Creative Audit"
             description="View each creator's top-performing content styles. Send targeted briefs based on what works."
@@ -223,7 +219,7 @@ export default function Home() {
       {campaignId ? (
         <DashboardOverview key={refreshKey} campaignId={campaignId} />
       ) : (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-5">
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-blue-900">Create your first campaign</h2>
           <p className="mt-1 text-sm text-blue-800">
             Select <strong>+ New Campaign</strong> from the sidebar campaign dropdown to unlock dashboard analytics and recalculation.
@@ -232,9 +228,9 @@ export default function Home() {
       )}
 
       {/* Footer Help */}
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 sm:p-6 text-center">
+      <div className="rounded-2xl border border-gray-200 bg-white/90 p-4 text-center shadow-sm backdrop-blur-sm sm:p-6">
         <p className="text-sm text-gray-600">
-          💡 <strong>Need help?</strong> Click the <span className="font-mono bg-white px-2 py-1 rounded border border-gray-300">?</span> icons throughout the app for tips and explanations.
+          <strong>Need help?</strong> Click the <span className="font-mono bg-white px-2 py-1 rounded border border-gray-300">?</span> icons throughout the app for tips and explanations.
         </p>
       </div>
 
@@ -281,4 +277,22 @@ function formatTime(date: Date): string {
   if (hours < 24) return `${hours}h ago`;
 
   return date.toLocaleDateString();
+}
+
+function QuickActionIcon({ variant }: { variant: "creators" | "alerts" | "search" }) {
+  const style =
+    variant === "creators"
+      ? "border-blue-300 bg-white/80 text-blue-700"
+      : variant === "alerts"
+        ? "border-orange-300 bg-white/80 text-orange-700"
+        : "border-green-300 bg-white/80 text-green-700";
+  const label = variant === "creators" ? "CR" : variant === "alerts" ? "AL" : "LK";
+  return (
+    <span
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border text-[11px] font-semibold tracking-wide ${style}`}
+      aria-hidden="true"
+    >
+      {label}
+    </span>
+  );
 }

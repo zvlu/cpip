@@ -18,7 +18,7 @@ function main() {
     throw new Error(`Duplicate migration version detected. Found: ${migrationFiles.join(", ")}`);
   }
 
-  const requiredVersions = [1, 2, 3, 4, 5];
+  const requiredVersions = [1, 2, 3, 4, 5, 6, 7];
   for (const version of requiredVersions) {
     if (!uniqueNumbers.has(version)) {
       throw new Error(`Missing migration version ${String(version).padStart(3, "0")}`);

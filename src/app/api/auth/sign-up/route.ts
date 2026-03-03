@@ -7,7 +7,16 @@ type SignUpPayload = {
   password?: string;
 };
 
-const ENABLE_PUBLIC_SIGNUP = process.env.ENABLE_PUBLIC_SIGNUP === "true";
+function parsePublicSignupEnabled(): boolean {
+  const rawFlag = process.env.ENABLE_PUBLIC_SIGNUP?.trim().toLowerCase();
+  if (rawFlag === "true") return true;
+  if (rawFlag === "false") return false;
+
+  // Safe fallback for existing prod environments missing the flag.
+  return process.env.NODE_ENV === "production";
+}
+
+const ENABLE_PUBLIC_SIGNUP = parsePublicSignupEnabled();
 const SIGNUP_WINDOW_MS = Number(process.env.PUBLIC_SIGNUP_RATE_LIMIT_WINDOW_MS || 10 * 60 * 1000);
 const SIGNUP_MAX_REQUESTS = Number(process.env.PUBLIC_SIGNUP_RATE_LIMIT_MAX_REQUESTS || 5);
 

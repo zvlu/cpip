@@ -4,6 +4,8 @@ import { z } from "zod";
 import { assertCampaignOwnedByOrg, assertCreatorOwnedByOrg } from "@/lib/api/authorization";
 import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
 
+export const dynamic = "force-dynamic";
+
 const PostsQuerySchema = z
   .object({
     creator_id: z.string().uuid().optional(),

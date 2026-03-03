@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { apiFetch } from "@/lib/api/client";
 
 export function LookalikeDiscovery({ creatorId, campaignId }: { creatorId: string; campaignId: string }) {
+  const router = useRouter();
   const [lookalikes, setLookalikes] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +61,14 @@ export function LookalikeDiscovery({ creatorId, campaignId }: { creatorId: strin
   }
 
   if (!lookalikes || !lookalikes.similar_creators || lookalikes.similar_creators.length === 0) {
-    return <EmptyState icon="🔍" title="No similar creators found" description="Try adding more creators to find matches" />;
+    return (
+      <EmptyState
+        icon="🔍"
+        title="No similar creators found"
+        description="Try adding more creators to find matches"
+        action={{ label: "Add More Creators", onClick: () => router.push("/creators") }}
+      />
+    );
   }
 
   return (

@@ -29,11 +29,17 @@ export interface AppSettings {
 export const SETTINGS_STORAGE_KEY = "cpip_settings_v1";
 export const SETTINGS_UPDATED_EVENT = "cpip-settings-updated";
 const MAX_LOGO_URL_LENGTH = 4_500_000;
+const DEFAULT_LOGO_URL = "/app-logo-clean.png";
+const LEGACY_LOGO_URLS = new Set([
+  "/logo.png",
+  "/creatorpulselogo.png",
+  "/Gemini_Generated_Image_oo06tooo06tooo06-Photoroom.png",
+]);
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   branding: {
     companyName: "CreatorPulse",
-    logoUrl: "/logo.png",
+    logoUrl: DEFAULT_LOGO_URL,
   },
   campaignDefaults: {
     aov: 45,
@@ -124,11 +130,19 @@ function toString(value: unknown, fallback: string, maxLength = 255): string {
   return trimmed.slice(0, maxLength);
 }
 
+function normalizeLogoUrl(value: string): string {
+  if (value.startsWith("data:image/")) {
+    return DEFAULT_LOGO_URL;
+  }
+  return LEGACY_LOGO_URLS.has(value) ? DEFAULT_LOGO_URL : value;
+}
+
 export function sanitizeAppSettings(input: Partial<AppSettings> | null | undefined): AppSettings {
+  const incomingLogoUrl = toString(input?.branding?.logoUrl, DEFAULT_APP_SETTINGS.branding.logoUrl, MAX_LOGO_URL_LENGTH);
   return {
     branding: {
       companyName: toString(input?.branding?.companyName, DEFAULT_APP_SETTINGS.branding.companyName, 80),
-      logoUrl: toString(input?.branding?.logoUrl, DEFAULT_APP_SETTINGS.branding.logoUrl, MAX_LOGO_URL_LENGTH),
+      logoUrl: normalizeLogoUrl(incomingLogoUrl),
     },
     campaignDefaults: {
       aov: toNumber(input?.campaignDefaults?.aov, DEFAULT_APP_SETTINGS.campaignDefaults.aov, 0, 100000),

@@ -10,10 +10,10 @@ import { DEFAULT_APP_SETTINGS, loadAppSettings, resolveBrandCompanyName, SETTING
 import { useAuthUser } from "@/lib/hooks/useAuthUser";
 
 const nav = [
-  { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/creators", label: "Creators", icon: "👥" },
-  { href: "/alerts", label: "Alerts", icon: "🔔" },
-  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/", label: "Dashboard", icon: "DB" },
+  { href: "/creators", label: "Creators", icon: "CR" },
+  { href: "/alerts", label: "Alerts", icon: "AL" },
+  { href: "/settings", label: "Settings", icon: "ST" },
 ];
 
 export function Sidebar() {
@@ -136,12 +136,12 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Top Bar */}
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white px-4 py-3 md:hidden">
+      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur-sm md:hidden">
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => setIsMobileOpen((prev) => !prev)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
+            className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50"
             aria-label="Open navigation menu"
             aria-expanded={isMobileOpen}
             aria-controls="app-navigation"
@@ -170,7 +170,7 @@ export function Sidebar() {
       {isMobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/30 md:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px] md:hidden"
           aria-label="Close navigation menu"
           onClick={() => setIsMobileOpen(false)}
         />
@@ -179,7 +179,7 @@ export function Sidebar() {
       <aside
         id="app-navigation"
         ref={asideRef}
-        className={`fixed left-0 top-0 z-50 flex h-screen w-72 max-w-[85vw] transform flex-col border-r border-gray-200 bg-white p-4 shadow-sm transition-transform duration-200 md:w-64 md:max-w-none md:translate-x-0 md:p-6 ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-72 max-w-[85vw] transform flex-col border-r border-gray-200 bg-white/95 p-4 shadow-xl backdrop-blur-md transition-transform duration-200 md:w-64 md:max-w-none md:translate-x-0 md:p-6 ${
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -202,7 +202,7 @@ export function Sidebar() {
           </Link>
           <button
             type="button"
-            className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 md:hidden"
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 md:hidden"
             onClick={() => setIsMobileOpen(false)}
           >
             Close
@@ -211,25 +211,28 @@ export function Sidebar() {
 
         {/* Campaign Selector Section */}
         <div className="mb-6 border-b border-gray-200 pb-5 md:mb-8 md:pb-6">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-600">Campaign</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Campaign</p>
           <CampaignSelector />
         </div>
 
         {/* Navigation Section */}
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Navigation</p>
         <nav className="flex-1 space-y-1">
           {nav.map((n) => (
             <Link
               key={n.href}
               href={n.href}
               onClick={handleNavigate}
-              className={`group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
+              className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 ${
                 isNavItemActive(n.href)
-                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100"
-                  : "text-gray-700 hover:bg-gray-50"
+                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 shadow-sm"
+                  : "text-gray-700 hover:bg-gray-50 hover:translate-x-0.5"
               }`}
               aria-current={isNavItemActive(n.href) ? "page" : undefined}
             >
-              <span className="text-lg transition-transform group-hover:scale-110">{n.icon}</span>
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-current/20 bg-white/70 px-1 text-[10px] font-semibold tracking-wide transition-transform group-hover:scale-105">
+                {n.icon}
+              </span>
               <span>{n.label}</span>
             </Link>
           ))}
@@ -237,31 +240,14 @@ export function Sidebar() {
 
         {/* Footer Section */}
         <div className="border-t border-gray-200 pt-6">
-          {authLoading ? (
-            <div className="mb-3 rounded-lg border border-gray-200 p-3">
-              <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
-              <div className="mt-2 h-3 w-36 animate-pulse rounded bg-gray-200" />
-            </div>
-          ) : user ? (
-            <div className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-green-800">Signed In</p>
-              <p className="mt-1 truncate text-sm font-medium text-green-900">{user.email || "Authenticated user"}</p>
-            </div>
-          ) : (
-            <div className="mb-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Signed Out</p>
-              <p className="mt-1 text-sm text-yellow-900">No active session detected.</p>
-            </div>
-          )}
-
           <button
             type="button"
             onClick={handleSignOut}
             disabled={isSigningOut || authLoading}
-            className={`w-full rounded-lg border px-4 py-2 text-sm font-medium transition ${
+            className={`w-full rounded-xl border px-4 py-2 text-sm font-medium transition-all ${
               user
-                ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:-translate-y-px"
+                : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:-translate-y-px"
             } ${isSigningOut || authLoading ? "cursor-not-allowed opacity-60" : ""}`}
           >
             {isSigningOut ? "Signing out..." : user ? "Sign out" : "Sign in"}

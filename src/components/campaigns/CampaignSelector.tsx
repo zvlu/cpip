@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useCampaign } from "@/lib/context/CampaignContext";
 import { CreateCampaignModal } from "./CreateCampaignModal";
 
@@ -7,21 +7,103 @@ export function CampaignSelector() {
   const { selectedCampaign, campaigns, setSelectedCampaign } = useCampaign();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const dropdownId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const handleSelectCampaign = (campaign: any) => {
     setSelectedCampaign(campaign);
     setIsDropdownOpen(false);
   };
 
+  const totalMenuItems = campaigns.length + 1;
+
+  const closeDropdown = (focusTrigger = false) => {
+    setIsDropdownOpen(false);
+    if (focusTrigger) {
+      triggerRef.current?.focus();
+    }
+  };
+
+  const openCreateCampaignModal = () => {
+    setIsCreateModalOpen(true);
+    setIsDropdownOpen(false);
+  };
+
+  const executeMenuItem = (index: number) => {
+    if (index === 0) {
+      openCreateCampaignModal();
+      return;
+    }
+    const campaign = campaigns[index - 1];
+    if (campaign) {
+      handleSelectCampaign(campaign);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDropdown(true);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    setHighlightedIndex(0);
+  }, [isDropdownOpen, campaigns.length]);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    itemRefs.current[highlightedIndex]?.focus();
+  }, [highlightedIndex, isDropdownOpen]);
+
   return (
     <>
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         <button
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="flex w-full items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-900 font-medium text-sm"
+          ref={triggerRef}
+          type="button"
+          onClick={() => setIsDropdownOpen((prev) => !prev)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setHighlightedIndex(0);
+              setIsDropdownOpen(true);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setHighlightedIndex(totalMenuItems - 1);
+              setIsDropdownOpen(true);
+            }
+          }}
+          className="flex w-full items-start gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
+          aria-expanded={isDropdownOpen}
+          aria-haspopup="menu"
+          aria-controls={dropdownId}
         >
           <span>📊</span>
-          <span className="truncate max-w-xs">
+          <span className="min-w-0 flex-1 whitespace-normal break-words">
             {selectedCampaign ? `${selectedCampaign.name}${selectedCampaign.product_name ? ` - ${selectedCampaign.product_name}` : ""}` : "Select Campaign"}
           </span>
           <svg className={`w-4 h-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,28 +112,78 @@ export function CampaignSelector() {
         </button>
 
         {isDropdownOpen && (
-          <div className="absolute top-full left-0 mt-2 w-full sm:w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50">
+          <div
+            id={dropdownId}
+            role="menu"
+            className="absolute top-full left-0 z-50 mt-2 w-full rounded-lg border border-gray-300 bg-white shadow-lg sm:w-80"
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setHighlightedIndex((current) => (current + 1) % totalMenuItems);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setHighlightedIndex((current) => (current - 1 + totalMenuItems) % totalMenuItems);
+                return;
+              }
+              if (event.key === "Home") {
+                event.preventDefault();
+                setHighlightedIndex(0);
+                return;
+              }
+              if (event.key === "End") {
+                event.preventDefault();
+                setHighlightedIndex(totalMenuItems - 1);
+                return;
+              }
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                executeMenuItem(highlightedIndex);
+              }
+            }}
+          >
             <div className="p-2 border-b border-gray-200">
               <button
-                onClick={() => {
-                  setIsCreateModalOpen(true);
-                  setIsDropdownOpen(false);
+                ref={(element) => {
+                  itemRefs.current[0] = element;
                 }}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                type="button"
+                role="menuitem"
+                onMouseEnter={() => setHighlightedIndex(0)}
+                onClick={openCreateCampaignModal}
+                className={`w-full rounded px-3 py-2 text-left text-sm font-medium transition-colors ${
+                  highlightedIndex === 0 ? "bg-blue-50 text-blue-700" : "text-blue-600 hover:bg-blue-50"
+                }`}
               >
                 + New Campaign
               </button>
             </div>
             <div className="max-h-64 overflow-y-auto">
               {campaigns.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-sm">No campaigns available</div>
+                <div className="space-y-3 p-4 text-center text-sm text-gray-500">
+                  <p>No campaigns available</p>
+                  <button
+                    type="button"
+                    onClick={openCreateCampaignModal}
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    Create Campaign
+                  </button>
+                </div>
               ) : (
-                campaigns.map((campaign) => (
+                campaigns.map((campaign, index) => (
                   <button
                     key={campaign.id}
+                    ref={(element) => {
+                      itemRefs.current[index + 1] = element;
+                    }}
+                    role="menuitem"
+                    type="button"
+                    onMouseEnter={() => setHighlightedIndex(index + 1)}
                     onClick={() => handleSelectCampaign(campaign)}
-                    className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                      selectedCampaign?.id === campaign.id ? "bg-blue-50" : ""
+                    className={`w-full border-b border-gray-100 px-4 py-3 text-left transition-colors ${
+                      selectedCampaign?.id === campaign.id || highlightedIndex === index + 1 ? "bg-blue-50" : "hover:bg-gray-50"
                     }`}
                   >
                     <div className="font-medium text-gray-900">{campaign.name}</div>

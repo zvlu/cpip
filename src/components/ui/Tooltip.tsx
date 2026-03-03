@@ -102,7 +102,7 @@ export function Tooltip({ text, children, position = "top" }: TooltipProps) {
         <div
           id={id}
           role="tooltip"
-          className={`absolute z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg whitespace-nowrap pointer-events-none animate-fade-in ${POSITION_CLASSES[position]}`}
+          className={`absolute z-50 w-max min-w-[14rem] max-w-[22rem] rounded-lg bg-gray-900 px-3 py-2 text-sm leading-relaxed text-white whitespace-normal break-normal [overflow-wrap:normal] shadow-lg pointer-events-none animate-fade-in ${POSITION_CLASSES[position]}`}
         >
           {text}
           <div

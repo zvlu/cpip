@@ -6,6 +6,8 @@ import { assertCampaignOwnedByOrg, assertCreatorOwnedByOrg } from "@/lib/api/aut
 import { buildRateLimitKey, enforceRateLimit } from "@/lib/api/rateLimit";
 import { apiSuccess, getRequestId, handleApiError } from "@/lib/api/response";
 
+export const dynamic = "force-dynamic";
+
 const LookalikeQuerySchema = z.object({
   creator_id: z.string().uuid(),
   campaign_id: z.string().uuid(),
